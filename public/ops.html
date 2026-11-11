@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuickCom Ops Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+    #map { position: absolute; inset: 0; }
+    .panel {
+      position: absolute; top: 12px; right: 12px; z-index: 1000; background: #fff;
+      padding: 12px 14px; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.18);
+      max-width: 300px; font-size: 13px; line-height: 1.45;
+    }
+    .panel h1 { font-size: 15px; margin: 0 0 6px; }
+    .panel code { background: #f3f3f3; padding: 1px 4px; border-radius: 4px; }
+    #probe { margin-top: 8px; padding-top: 8px; border-top: 1px solid #eee; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div class="panel">
+    <h1>QuickCom · Bangalore</h1>
+    <div id="summary">Loading <code>GET /stores</code>…</div>
+    <div id="probe">Click anywhere on the map: the server answers "which store serves this spot?" (chapter 1).</div>
+  </div>
+<script>
+  const map = L.map('map').setView([12.96, 77.63], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18, attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  const colors = ['#e6194b','#3cb44b','#4363d8','#f58231','#911eb4','#008080','#9a6324','#800000'];
+  let areas = [];
+
+  fetch('/stores').then(r => r.json()).then(fc => {
+    let riders = 0, stores = 0;
+    for (const f of fc.features) {
+      const p = f.properties, c = colors[(p.id - 1) % colors.length];
+      if (p.kind === 'service_area') {
+        const layer = L.geoJSON(f, { style: { color: c, weight: 2, fillOpacity: 0.12 } }).addTo(map);
+        areas.push({ p, layer });
+      } else {
+        stores++; riders += p.riders;
+        L.circleMarker([f.geometry.coordinates[1], f.geometry.coordinates[0]],
+          { radius: 8, color: c, fillColor: c, fillOpacity: 1 })
+          .bindPopup(`<b>${p.name}</b> (${p.code})<br>${p.areaKm2} km² · ${p.riders} riders<br>
+                      ${p.skusInStock} SKUs in stock · cap ${p.maxOrdersPerHour} orders/hr`)
+          .addTo(map);
+      }
+    }
+    document.getElementById('summary').innerHTML =
+      `${stores} dark stores · ${riders} riders.<br>Coloured circles = delivery polygons. Gaps between them are <b>not serviceable</b>.`;
+  });
+
+  // Chapter 1: ask the server (geohash cache -> PostGIS) and compare with a
+  // point-in-polygon check done right here in the browser. They must agree.
+  let pin;
+  map.on('click', async (e) => {
+    const lat = e.latlng.lat.toFixed(6), lng = e.latlng.lng.toFixed(6);
+    if (pin) pin.remove();
+    pin = L.marker(e.latlng).addTo(map);
+    const hits = areas.filter(({ layer }) => layer.getLayers().some(l => inside(e.latlng, l.getLatLngs()[0])));
+    const t0 = performance.now();
+    const r = await fetch(`/serviceability?lat=${lat}&lng=${lng}`).then(x => x.json());
+    const ms = (performance.now() - t0).toFixed(1);
+    document.getElementById('probe').innerHTML =
+      `<b>${lat}, ${lng}</b><br>` +
+      (r.serviceable
+        ? `Server: <b>${r.store.code}</b> · ${(r.distanceMeters / 1000).toFixed(1)} km · <b>${r.promiseMinutes} min</b>` +
+          (r.alternatives.length ? `<br>Also covered by: ${r.alternatives.join(', ')}` : '')
+        : 'Server: <b>Not serviceable</b>') +
+      `<br><small>via <code>${r.via}</code> · cell <code>${r.cell}</code> · ${ms} ms</small>` +
+      `<br><small>Browser check: ${hits.length ? hits.map(h => h.p.code).join(', ') : 'none'}</small>`;
+  });
+
+  // Ray casting: count how many polygon edges a horizontal ray crosses.
+  // Odd = inside, even = outside.
+  function inside(pt, poly) {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a.lat > pt.lat) !== (b.lat > pt.lat) &&
+          pt.lng < (b.lng - a.lng) * (pt.lat - a.lat) / (b.lat - a.lat) + a.lng) c = !c;
+    }
+    return c;
+  }
+</script>
+</body>
+</html>
