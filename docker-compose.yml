@@ -1,0 +1,51 @@
+# QuickCom local infra.
+#   docker compose up -d postgres redis        -> the two stateful pieces
+#   npm run load -- /load/00-smoke.js          -> k6 (only starts under the "load" profile)
+#
+# Ports are deliberately NOT the defaults (5432/6379) so this never collides
+# with other local Postgres/Redis containers.
+services:
+  postgres:
+    # Postgres + PostGIS. PostGIS is the "maps" extension: it lets SQL answer
+    # "is this point inside this polygon?" and "how far is this from that?".
+    image: postgis/postgis:16-3.4
+    container_name: quickcom-postgres
+    environment:
+      POSTGRES_USER: quickcom
+      POSTGRES_PASSWORD: quickcom
+      POSTGRES_DB: quickcom
+    ports:
+      - '5434:5432'
+    volumes:
+      - quickcom-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U quickcom -d quickcom']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: quickcom-redis
+    ports:
+      - '6381:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # k6 = load generator. Runs in Docker so you don't have to install it.
+  # It reaches the API running on your Mac through host.docker.internal.
+  k6:
+    image: grafana/k6:0.55.0
+    profiles: ['load']
+    environment:
+      BASE_URL: http://host.docker.internal:4000
+    volumes:
+      - ./load:/load:ro
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+volumes:
+  quickcom-pg:
