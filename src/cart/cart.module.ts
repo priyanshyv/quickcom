@@ -1,6 +1,9 @@
 import { Body, Controller, Delete, Get, Module, Param, Post, Put } from '@nestjs/common';
-import { IsInt, Max, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { IsArray, IsIn, IsInt, IsOptional, IsString, Max, Min, ValidateNested } from 'class-validator';
 import { ReservationService } from './reservation.service';
+import { LabArm, LabService } from './lab.service';
+import { ReserveMode } from './cart.constants';
 import { InventoryModule } from '../inventory/inventory.module';
 import { CatalogModule } from '../catalog/catalog.module';
 
@@ -67,9 +70,66 @@ export class HoldsAdminController {
   }
 }
 
+class RunDto {
+  @IsIn(['naive', 'pg', 'redis'])
+  mode: ReserveMode;
+
+  @IsInt()
+  @Min(1)
+  @Max(2000)
+  buyers: number;
+
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  units: number;
+}
+
+class ArmDto {
+  @IsOptional() @IsInt() storeId?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(200) skus?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(10_000_000) units?: number;
+}
+
+class OriginalDto {
+  @IsInt() skuId: number;
+  @IsInt() onHand: number;
+  @IsInt() reserved: number;
+}
+
+class FinishDto implements LabArm {
+  @IsString() runId: string;
+  @IsInt() storeId: number;
+  @IsInt() units: number;
+  @IsArray() @IsInt({ each: true }) skuIds: number[];
+  @IsArray() @ValidateNested({ each: true }) @Type(() => OriginalDto) originals: OriginalDto[];
+}
+
+@Controller('admin/lab/flash-sale')
+export class LabController {
+  constructor(private readonly lab: LabService) {}
+
+  // Used by public/flash-sale.html: the whole experiment in one request.
+  @Post()
+  run(@Body() b: RunDto) {
+    return this.lab.run(b.mode, b.buyers, b.units);
+  }
+
+  // Used by load/03-flash-sale.js (k6 setup / teardown).
+  @Post('arm')
+  arm(@Body() b: ArmDto) {
+    return this.lab.arm(b.storeId ?? 1, b.skus ?? 1, b.units ?? 10);
+  }
+
+  @Post('finish')
+  finish(@Body() b: FinishDto) {
+    return this.lab.finish(b);
+  }
+}
+
 @Module({
   imports: [InventoryModule, CatalogModule],
-  controllers: [CartController, HoldsAdminController],
-  providers: [ReservationService],
+  controllers: [CartController, HoldsAdminController, LabController],
+  providers: [ReservationService, LabService],
 })
 export class CartModule {}
