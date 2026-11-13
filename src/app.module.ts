@@ -9,6 +9,7 @@ import { ServiceabilityModule } from './serviceability/serviceability.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { HomeModule } from './home/home.module';
+import { CartModule } from './cart/cart.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { HomeModule } from './home/home.module';
     CatalogModule, // chapter 2
     InventoryModule, // chapter 2
     HomeModule, // chapter 2
+    CartModule, // chapter 3
   ],
 })
 export class AppModule {}

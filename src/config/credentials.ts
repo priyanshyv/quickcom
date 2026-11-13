@@ -29,6 +29,14 @@ export const credentials = {
     port: num(process.env.REDIS_PORT, 6381),
   },
 
+  // Chapter 3: how long stock stays held in a cart nobody is touching.
+  cart: {
+    holdSeconds: num(process.env.CART_HOLD_SECONDS, 600),
+    // How often each pod looks for expired holds. 0 = off (the e2e tests
+    // turn it off so they can run the sweeper by hand).
+    sweepIntervalMs: num(process.env.CART_SWEEP_MS, 5000),
+  },
+
   city: {
     code: 'BLR',
     // Every dark store delivers inside a polygon. In the seed we approximate
