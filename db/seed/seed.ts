@@ -101,7 +101,7 @@ async function main() {
   console.log(JSON.stringify({ code: 'SEED_STARTED', db: credentials.db.port }));
 
   await ds.transaction(async (m) => {
-    await m.query(`TRUNCATE riders, store_inventory, skus, stores RESTART IDENTITY CASCADE`);
+    await m.query(`TRUNCATE reservations, riders, store_inventory, skus, stores RESTART IDENTITY CASCADE`);
 
     // --- stores: point + a 3 km circle as the delivery polygon ----------------
     for (const s of STORES) {
