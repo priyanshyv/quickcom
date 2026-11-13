@@ -10,30 +10,46 @@
     :root { --ok: #0c831f; --warn: #b26a00; --bad: #b3261e; --muted: #666; --line: #e6e6e6; }
     * { box-sizing: border-box; }
     html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; background: #fff; color: #111; }
-    .wrap { display: grid; grid-template-columns: 1fr 420px; height: 100%; }
+    .wrap { display: grid; grid-template-columns: 1fr 440px; height: 100%; }
     #map { height: 100%; }
-    .side { overflow-y: auto; border-left: 1px solid var(--line); padding: 14px 16px; }
-    @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; grid-template-rows: 45vh 1fr; } .side { border-left: 0; border-top: 1px solid var(--line); } }
-    h1 { font-size: 16px; margin: 0 0 8px; }
+    .side { overflow-y: auto; border-left: 1px solid var(--line); padding: 14px 16px 40px; }
+    @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; grid-template-rows: 40vh 1fr; } .side { border-left: 0; border-top: 1px solid var(--line); } }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    nav { font-size: 12px; margin-bottom: 8px; } nav a { color: var(--muted); margin-right: 10px; }
     .presets button { font-size: 12px; margin: 0 4px 6px 0; padding: 4px 8px; border: 1px solid var(--line); background: #fafafa; border-radius: 6px; cursor: pointer; }
     .banner { padding: 10px 12px; border-radius: 8px; margin: 8px 0 12px; font-size: 14px; }
     .banner.ok { background: #eaf7ec; } .banner.bad { background: #fdecea; }
     .banner b.eta { font-size: 20px; color: var(--ok); }
     .debug { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: ui-monospace, monospace; }
     h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
-    .item { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
+    .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
     .item .name small { color: var(--muted); }
+    .item .right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
     .rx { font-size: 10px; background: #eef; color: #335; padding: 1px 4px; border-radius: 4px; margin-left: 4px; }
     .badge { font-size: 11px; white-space: nowrap; }
     .badge.in { color: var(--ok); } .badge.low { color: var(--warn); font-weight: 600; } .badge.out { color: var(--bad); }
     .item.out .name { opacity: .45; }
+    button.add { border: 1px solid var(--ok); color: var(--ok); background: #fff; border-radius: 6px; padding: 3px 14px; font-weight: 600; cursor: pointer; }
+    .stepper { display: inline-flex; align-items: center; background: var(--ok); color: #fff; border-radius: 6px; font-weight: 600; }
+    .stepper button { background: none; border: 0; color: #fff; padding: 3px 9px; cursor: pointer; font-size: 14px; }
+    .stepper span { min-width: 16px; text-align: center; }
+    .cartbar { position: sticky; top: -14px; z-index: 5; background: var(--ok); color: #fff; border-radius: 8px; padding: 9px 12px; margin: 6px 0 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+    .cartbar.empty { background: #f3f3f3; color: var(--muted); }
+    .cartbar button { background: rgba(255,255,255,.2); border: 0; color: inherit; border-radius: 5px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
+    .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #222; color: #fff; padding: 9px 14px; border-radius: 8px; font-size: 13px; z-index: 2000; display: none; }
+    details.apilog { margin-top: 18px; font-size: 11px; }
+    details.apilog summary { cursor: pointer; color: var(--muted); }
+    #log { font-family: ui-monospace, monospace; margin-top: 6px; }
+    #log div { padding: 2px 0; border-bottom: 1px dotted var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #log .s409 { color: var(--bad); } #log .s200 { color: var(--ok); }
   </style>
 </head>
 <body>
 <div class="wrap">
   <div id="map"></div>
   <div class="side">
-    <h1>QuickCom · customer home screen</h1>
+    <h1>QuickCom · customer app</h1>
+    <nav><a href="/ops.html">Ops map</a><a href="/customer.html">Customer app</a><a href="/flash-sale.html">Flash-sale lab</a></nav>
     <div class="presets">
       <button data-ll="12.9346,77.6113">Forum Mall</button>
       <button data-ll="12.9250,77.6350">KOR/HSR overlap</button>
@@ -41,15 +57,45 @@
       <button data-ll="12.8452,77.6602">Electronic City</button>
     </div>
     <div style="font-size:12px;color:var(--muted)">Or click anywhere on the map to "open the app" there.</div>
+    <div id="cartbar" class="cartbar empty">🛒 Cart is empty</div>
     <div id="out"></div>
+    <details class="apilog" open>
+      <summary>API calls this page made (newest first)</summary>
+      <div id="log"></div>
+    </details>
   </div>
 </div>
+<div class="toast" id="toast"></div>
 <script>
   const map = L.map('map').setView([12.95, 77.63], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap' }).addTo(map);
-  let you;
 
-  fetch('/stores').then(r => r.json()).then(fc => {
+  // One cart id per browser, like a real app keeps one per device/session.
+  let cartId;
+  try { cartId = localStorage.getItem('quickcom.cartId'); } catch (e) {}
+  if (!cartId) {
+    cartId = 'web-' + Math.random().toString(36).slice(2, 10);
+    try { localStorage.setItem('quickcom.cartId', cartId); } catch (e) {}
+  }
+
+  // Every request goes through here so you can SEE which API each tap uses.
+  async function api(method, path, body) {
+    const t0 = performance.now();
+    const res = await fetch(path, {
+      method, headers: body ? { 'content-type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const ms = (performance.now() - t0).toFixed(0);
+    const log = document.getElementById('log');
+    const row = document.createElement('div');
+    row.className = 's' + res.status;
+    row.textContent = `${method} ${path}${body ? ' ' + JSON.stringify(body) : ''} → ${res.status} · ${ms} ms`;
+    log.prepend(row);
+    while (log.children.length > 12) log.lastChild.remove();
+    return { status: res.status, body: await res.json().catch(() => null) };
+  }
+
+  api('GET', '/stores').then(({ body: fc }) => {
     L.geoJSON(fc, {
       style: { color: '#0c831f', weight: 1, fillOpacity: 0.06 },
       pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#0c831f', fillOpacity: 1 }).bindTooltip(f.properties.code),
@@ -61,14 +107,88 @@
     : s === 'out' ? '<span class="badge out">Out of stock</span>'
     : `<span class="badge low">Only ${s.split(':')[1]} left</span>`;
 
+  let you, home = null, cart = { items: [] }, expiryTimer;
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.style.display = 'block';
+    clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), 2600);
+  }
+
+  // ── Chapter 1 + 2: open the app at a point ─────────────────────────────────
   async function open(lat, lng) {
     if (you) you.remove();
     you = L.marker([lat, lng]).addTo(map);
     const t0 = performance.now();
-    const res = await fetch(`/home?lat=${lat}&lng=${lng}`).then(r => r.json());
-    const ms = (performance.now() - t0).toFixed(1);
-    const loc = res.location, el = document.getElementById('out');
-    const dbg = `<div class="debug">serviceability via <b>${loc.via}</b> · cell ${loc.cell} · ${ms} ms round trip</div>`;
+    const { body } = await api('GET', `/home?lat=${lat}&lng=${lng}`);
+    home = body;
+    home.ms = (performance.now() - t0).toFixed(1);
+    await loadCart();
+  }
+
+  // ── Chapter 3: the cart ────────────────────────────────────────────────────
+  async function loadCart() {
+    cart = (await api('GET', `/carts/${cartId}`)).body;
+    render();
+  }
+
+  const inCart = (storeId, skuId) => cart.items.find((i) => i.storeId === storeId && i.skuId === skuId)?.qty ?? 0;
+
+  async function setQty(skuId, qty) {
+    const storeId = home.location.store.id;
+    const r = await api('PUT', `/carts/${cartId}/items`, { storeId, skuId, qty });
+    if (r.status === 409) {
+      const b = r.body.stock;
+      toast(b === 'out' ? 'Sorry, someone just took the last one.' : `Sorry, only ${b.split(':')[1]} left.`);
+    } else if (r.status !== 200) {
+      toast(r.body?.message?.toString() ?? 'Something went wrong');
+    }
+    // Refresh ONLY the small things that changed: this store's stock badges
+    // (chapter 2's split API) and the cart. The catalog part is still on screen.
+    const stock = (await api('GET', `/stores/${storeId}/stock`)).body.badges;
+    for (const sec of home.sections) for (const it of sec.items) if (stock[it.id]) it.stock = stock[it.id];
+    await loadCart();
+  }
+
+  function renderCartBar() {
+    const bar = document.getElementById('cartbar');
+    clearInterval(expiryTimer);
+    if (!cart.items.length) {
+      bar.className = 'cartbar empty';
+      bar.innerHTML = '🛒 Cart is empty';
+      return;
+    }
+    bar.className = 'cartbar';
+    const tick = () => {
+      const s = Math.max(0, Math.round((new Date(cart.firstExpiresAt) - Date.now()) / 1000));
+      const left = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      bar.innerHTML = `<span>🛒 <b>${cart.units} item${cart.units > 1 ? 's' : ''}</b> · ${rupees(cart.totalPaise)}
+        · <span title="Stock is held for you this long after your last change">held ${left}</span></span>
+        <button id="empty">Empty cart</button>`;
+      document.getElementById('empty').onclick = async () => {
+        await api('DELETE', `/carts/${cartId}`);
+        if (home?.location?.serviceable) await setQtyRefreshOnly(); else await loadCart();
+      };
+      // The server's sweeper releases it within ~5 s of this hitting 0.
+      if (s === 0) { clearInterval(expiryTimer); setTimeout(loadCart, 6000); }
+    };
+    tick();
+    expiryTimer = setInterval(tick, 1000);
+  }
+
+  async function setQtyRefreshOnly() {
+    const storeId = home.location.store.id;
+    const stock = (await api('GET', `/stores/${storeId}/stock`)).body.badges;
+    for (const sec of home.sections) for (const it of sec.items) if (stock[it.id]) it.stock = stock[it.id];
+    await loadCart();
+  }
+
+  function render() {
+    renderCartBar();
+    const el = document.getElementById('out');
+    if (!home) return;
+    const loc = home.location;
+    const dbg = `<div class="debug">serviceability via <b>${loc.via}</b> · cell ${loc.cell} · ${home.ms} ms round trip</div>`;
     if (!loc.serviceable) {
       el.innerHTML = `<div class="banner bad"><b>Sorry, we don't deliver here yet.</b><br>You're between our stores' delivery areas.${dbg}</div>`;
       return;
@@ -76,23 +196,32 @@
     let html = `<div class="banner ok">Delivering in <b class="eta">${loc.promiseMinutes} min</b><br>
       from <b>${loc.store.name}</b> · ${(loc.distanceMeters / 1000).toFixed(1)} km away
       ${loc.alternatives.length ? `<br><small>Also covered by: ${loc.alternatives.join(', ')}</small>` : ''}${dbg}</div>`;
-    for (const sec of res.sections) {
+    for (const sec of home.sections) {
       html += `<h2>${sec.category}</h2>`;
       for (const it of sec.items) {
-        html += `<div class="item ${it.stock === 'out' ? 'out' : ''}">
+        const q = inCart(loc.store.id, it.id);
+        const control = q > 0
+          ? `<span class="stepper"><button data-sku="${it.id}" data-q="${q - 1}">−</button><span>${q}</span><button data-sku="${it.id}" data-q="${q + 1}">+</button></span>`
+          : it.stock === 'out' ? '' : `<button class="add" data-sku="${it.id}" data-q="1">ADD</button>`;
+        html += `<div class="item ${it.stock === 'out' && !q ? 'out' : ''}">
           <div class="name">${it.name}${it.rxRequired ? '<span class="rx">Rx</span>' : ''}<br><small>${it.packSize} · ${rupees(it.mrpPaise)}</small></div>
-          ${badge(it.stock)}</div>`;
+          <div class="right">${control}${badge(it.stock)}</div></div>`;
       }
     }
     el.innerHTML = html;
   }
 
+  document.getElementById('out').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-sku]');
+    if (b) setQty(Number(b.dataset.sku), Number(b.dataset.q));
+  });
   map.on('click', (e) => open(e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6)));
   document.querySelectorAll('.presets button').forEach(b => b.onclick = () => {
     const [lat, lng] = b.dataset.ll.split(',');
     map.setView([lat, lng], 14);
     open(lat, lng);
   });
+  loadCart();
 </script>
 </body>
 </html>

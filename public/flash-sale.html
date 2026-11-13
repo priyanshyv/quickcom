@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Flash-Sale Lab</title>
+  <style>
+    :root { --ok: #0c831f; --bad: #b3261e; --muted: #666; --line: #e6e6e6; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: system-ui, sans-serif; color: #111; background: #fff; }
+    main { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
+    nav { font-size: 12px; margin-bottom: 10px; } nav a { color: var(--muted); margin-right: 10px; }
+    h1 { font-size: 22px; margin: 0 0 6px; }
+    p.lead { color: #333; margin: 0 0 16px; max-width: 760px; line-height: 1.5; }
+    .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin-bottom: 14px; font-size: 13px; }
+    .controls label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); }
+    .controls input { width: 90px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 14px; }
+    .modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 20px; }
+    @media (max-width: 720px) { .modes { grid-template-columns: 1fr; } }
+    .mode { border: 1px solid var(--line); border-radius: 10px; padding: 12px; font-size: 13px; line-height: 1.45; }
+    .mode h3 { margin: 0 0 6px; font-size: 15px; }
+    .mode code { background: #f4f4f4; padding: 1px 4px; border-radius: 4px; font-size: 12px; }
+    .mode button { margin-top: 8px; width: 100%; padding: 8px; border-radius: 7px; border: 0; color: #fff; font-weight: 600; cursor: pointer; font-size: 14px; }
+    .mode.naive button { background: var(--bad); } .mode.pg button, .mode.redis button { background: var(--ok); }
+    .mode button:disabled { opacity: .5; cursor: wait; }
+    .run { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 12px; }
+    .run .head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 14px; }
+    .run .verdict { font-weight: 700; } .run .verdict.bad { color: var(--bad); } .run .verdict.ok { color: var(--ok); }
+    .boxes { display: flex; flex-wrap: wrap; gap: 3px; margin: 10px 0; }
+    .boxes i { width: 12px; height: 12px; border-radius: 2px; background: #e8e8e8; }
+    .boxes i.sold { background: var(--ok); } .boxes i.over { background: var(--bad); }
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px 14px; font-size: 12px; color: #333; }
+    .facts b { font-variant-numeric: tabular-nums; }
+    .legend { font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <nav><a href="/ops.html">Ops map</a><a href="/customer.html">Customer app</a><a href="/flash-sale.html">Flash-sale lab</a></nav>
+  <h1>Flash-sale lab: lots of buyers, few strips</h1>
+  <p class="lead">Each button makes exactly <b>units</b> of one item available at the Koramangala store, then has
+    <b>buyers</b> different carts tap <b>ADD</b> at the same instant. Afterwards it counts what happened and puts the stock back.
+    It calls <code>POST /admin/lab/flash-sale</code>.</p>
+
+  <div class="controls">
+    <label>buyers <input id="buyers" type="number" min="1" max="2000" value="200" /></label>
+    <label>units on sale <input id="units" type="number" min="1" max="1000" value="10" /></label>
+    <span class="legend">■ green = a unit that really existed and was sold · ■ red = sold but did not exist (oversold)</span>
+  </div>
+
+  <div class="modes">
+    <div class="mode naive">
+      <h3>❌ Naive</h3>
+      Read the stock, decide in JavaScript, write the new number back. Every buyer reads "10 left" before anyone writes.
+      <br><code>PUT /carts/:id/items/naive</code>
+      <button data-mode="naive">Run 200 buyers</button>
+    </div>
+    <div class="mode pg">
+      <h3>✅ Fix A: Postgres</h3>
+      One statement checks and takes: <code>UPDATE … WHERE on_hand − reserved ≥ 1</code>. The row lock makes buyers take turns.
+      <br><code>PUT /carts/:id/items/pg</code>
+      <button data-mode="pg">Run 200 buyers</button>
+    </div>
+    <div class="mode redis">
+      <h3>✅ Fix B: Redis gate + Postgres</h3>
+      A Lua script in Redis checks and takes first; only winners go on to Postgres. Losers never touch the database.
+      <br><code>PUT /carts/:id/items</code>
+      <button data-mode="redis">Run 200 buyers</button>
+    </div>
+  </div>
+
+  <div id="runs"></div>
+</main>
+<script>
+  const buyersIn = document.getElementById('buyers');
+  const unitsIn = document.getElementById('units');
+  const syncLabels = () => document.querySelectorAll('.mode button').forEach((b) => (b.textContent = `Run ${buyersIn.value} buyers`));
+  buyersIn.oninput = syncLabels;
+
+  document.querySelectorAll('.mode button').forEach((btn) => (btn.onclick = async () => {
+    const mode = btn.dataset.mode;
+    const buyers = Number(buyersIn.value), units = Number(unitsIn.value);
+    document.querySelectorAll('.mode button').forEach((b) => (b.disabled = true));
+    try {
+      const res = await fetch('/admin/lab/flash-sale', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode, buyers, units }),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new Error(JSON.stringify(r));
+      show(r);
+    } catch (e) {
+      alert('Run failed: ' + e.message);
+    } finally {
+      document.querySelectorAll('.mode button').forEach((b) => (b.disabled = false));
+    }
+  }));
+
+  function show(r) {
+    const s = r.perSku[0];
+    const shown = Math.min(Math.max(r.sold, r.units), 400);
+    let boxes = '';
+    for (let i = 0; i < shown; i++) boxes += `<i class="${i < Math.min(r.sold, r.units) ? 'sold' : i < r.sold ? 'over' : ''}"></i>`;
+    const names = { naive: '❌ Naive', pg: '✅ Fix A: Postgres', redis: '✅ Fix B: Redis gate' };
+    const verdict = r.oversold
+      ? `<span class="verdict bad">OVERSOLD ${r.oversold}: sold ${r.sold} strips of ${r.item}, only ${r.units} existed</span>`
+      : `<span class="verdict ok">Correct: sold exactly ${r.sold} of ${r.units}</span>`;
+    const div = document.createElement('div');
+    div.className = 'run';
+    div.innerHTML = `
+      <div class="head"><span><b>${names[r.mode]}</b> · ${r.buyers} buyers · ${r.units} units · ${r.ms} ms</span>${verdict}</div>
+      <div class="boxes">${boxes}</div>
+      <div class="facts">
+        <span>accepted (200): <b>${r.accepted}</b></span>
+        <span>refused (409): <b>${r.refused}</b></span>
+        <span>errors: <b>${r.errors}</b></span>
+        <span>lost updates: <b>${r.lostUpdates}</b></span>
+        <span>"reserved" counter went up by: <b>${s.reservedCounterWentUpBy}</b></span>
+        <span>Postgres says left: <b>${s.postgresSaysAvailable}</b></span>
+        <span>Redis copy says left: <b>${s.redisSaysAvailable}</b></span>
+      </div>`;
+    document.getElementById('runs').prepend(div);
+  }
+</script>
+</body>
+</html>
