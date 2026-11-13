@@ -42,8 +42,8 @@ local Postgres/Redis containers.
 | 0 | [The big picture](docs/00-big-picture.md): dark stores, the 10-minute budget, `store_id` as the sharding key, BLR numbers | ✅ |
 | 1 | [Serviceability](docs/01-serviceability.md): "can you deliver here, from which store?" (PostGIS, geohash cache, edge cells, version-bump invalidation) | ✅ |
 | 2 | [Catalog + per-store stock](docs/02-catalog-and-stock.md): read path vs write path, in-memory catalog + ETag/CDN, Redis stock hash, drift repair, split API | ✅ |
-| 3 | Cart + inventory reservation: the overselling problem | next |
-| 4 | Checkout, payment webhooks, order state machine, outbox | |
+| 3 | [Cart + overselling](docs/03-cart-and-overselling.md): lost updates, conditional UPDATE, Redis Lua gate, hold expiry with `SKIP LOCKED` | ✅ |
+| 4 | Checkout, payment webhooks, order state machine, outbox | next |
 | 5 | Store ops: pick and pack, FEFO, store capacity | |
 | 6 | Rider dispatch: nearest free rider, no double-assignment | |
 | 7 | Live rider tracking: GPS pings → Redis → SSE across pods | |
@@ -73,12 +73,18 @@ local Postgres/Redis containers.
 | `GET` | `/ops.html` | Leaflet map of the city; click to check serviceability |
 | `GET` | `/serviceability?lat&lng` | which store serves this point (cached) · also `/naive`, `/postgis`, `/stats` |
 | `PATCH` | `/admin/stores/:id/active` | turn a store on/off (bumps the cache version) |
-| `GET` | `/customer.html` | customer home screen: click the map to "open the app" there |
+| `GET` | `/customer.html` | customer app: click the map to "open the app", ADD to cart, see every API call it makes |
 | `GET` | `/catalog` | full catalog, with ETag + Cache-Control (CDN-friendly) |
 | `GET` | `/stores/:id/stock` | stock badges for one store (from Redis) |
 | `POST` | `/admin/stores/:id/stock` | set on-hand for a SKU (Postgres first, then Redis) |
 | `POST` | `/admin/stock/rebuild` | rebuild every Redis stock hash from Postgres |
 | `GET` | `/home?lat&lng` | home screen: store + catalog + stock (also `/home/naive`) |
+| `PUT` | `/carts/:cartId/items` | set a cart line's qty = hold stock (Redis gate + Postgres) · also `/pg`, `/naive` |
+| `GET` | `/carts/:cartId` | the cart: lines, total, when holds expire |
+| `DELETE` | `/carts/:cartId` | empty the cart (gives the stock back) |
+| `POST` | `/admin/holds/sweep` | release expired holds now (also runs every 5 s in every pod) · `GET /admin/holds/stats` |
+| `GET` | `/flash-sale.html` | lab page: 200 buyers vs 10 units, three ways |
+| `POST` | `/admin/lab/flash-sale` | the lab run (also `/arm` and `/finish`, used by k6) |
 
 ## Layout
 
@@ -87,7 +93,7 @@ src/config/credentials.ts   the only file that reads env vars
 src/logging/                TraceCodes + JSON logger
 src/redis/                  shared ioredis client
 src/db/                     data source + SQL migrations
-src/<feature>/              one folder per feature (stores, serviceability, catalog, inventory, home, …)
+src/<feature>/              one folder per feature (stores, serviceability, catalog, inventory, home, cart, …)
 db/seed/seed.ts             Bangalore: 8 stores, 146 SKUs, 61 riders
 public/                     demo pages (Leaflet maps)
 load/                       k6 scripts, one per chapter
