@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Module, Param, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Module, Param, Post, Put } from '@nestjs/common';
 import { IsInt, Max, Min } from 'class-validator';
 import { ReservationService } from './reservation.service';
 import { InventoryModule } from '../inventory/inventory.module';
@@ -51,9 +51,25 @@ export class CartController {
   }
 }
 
+@Controller('admin/holds')
+export class HoldsAdminController {
+  constructor(private readonly holds: ReservationService) {}
+
+  // Run the expiry sweeper right now (it also runs on its own every 5 s).
+  @Post('sweep')
+  sweep() {
+    return this.holds.sweep();
+  }
+
+  @Get('stats')
+  stats() {
+    return { ...this.holds.stats, pid: process.pid };
+  }
+}
+
 @Module({
   imports: [InventoryModule, CatalogModule],
-  controllers: [CartController],
+  controllers: [CartController, HoldsAdminController],
   providers: [ReservationService],
 })
 export class CartModule {}

@@ -4,6 +4,8 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  OnModuleDestroy,
+  OnModuleInit,
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import Redis from 'ioredis';
@@ -18,6 +20,8 @@ import {
   HOLD_SECONDS,
   ReserveMode,
   STOCK_GATE_LUA,
+  SWEEP_BATCH,
+  SWEEP_INTERVAL_MS,
 } from './cart.constants';
 
 export interface HoldResult {
@@ -45,7 +49,10 @@ const rowsOf = (res: any): any[] => (Array.isArray(res) && Array.isArray(res[0])
 // the second one changes nothing.
 // ─────────────────────────────────────────────────────────────────────────────
 @Injectable()
-export class ReservationService {
+export class ReservationService implements OnModuleInit, OnModuleDestroy {
+  private timer?: NodeJS.Timeout;
+  private sweeping = false;
+
   // Per-process counters, so a load test can show WHERE requests were refused.
   readonly stats = {
     naive: 0,
@@ -55,6 +62,7 @@ export class ReservationService {
     refusedByRedisGate: 0, // fix B: turned away without touching Postgres
     refusedByPgAfterGate: 0, // fix B: Redis said yes, Postgres said no (the copy had drifted)
     hotRowWrites: 0, // UPDATE store_inventory attempts: each one queues on that row's lock
+    expiredHolds: 0,
   };
 
   constructor(
@@ -65,6 +73,17 @@ export class ReservationService {
   ) {
     // Registers the Lua script once; ioredis then calls it by its hash (EVALSHA).
     this.redis.defineCommand('stockGate', { numberOfKeys: 1, lua: STOCK_GATE_LUA });
+  }
+
+  onModuleInit() {
+    if (SWEEP_INTERVAL_MS <= 0) return;
+    // EVERY pod runs the sweeper. That's safe because of SKIP LOCKED (see sweep()).
+    this.timer = setInterval(() => this.sweepTick(), SWEEP_INTERVAL_MS);
+    this.timer.unref();
+  }
+
+  onModuleDestroy() {
+    clearInterval(this.timer);
   }
 
   async setQty(mode: ReserveMode, cartId: string, storeId: number, skuId: number, qty: number): Promise<HoldResult> {
@@ -324,6 +343,82 @@ export class ReservationService {
     const cart = await this.getCart(cartId);
     for (const it of cart.items) await this.setQty('redis', cartId, it.storeId, it.skuId, 0);
     return { cartId, released: cart.items.length };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // The sweeper: give back stock from carts nobody touched for HOLD_SECONDS.
+  //
+  // Every pod runs this every few seconds. Two pods must never release the
+  // same hold twice (that would invent stock). FOR UPDATE SKIP LOCKED means:
+  // "lock the rows I'm taking; if another sweeper already locked a row, skip
+  // it instead of waiting". So the pods split the work and never overlap.
+  //
+  // The same lock also protects a customer who edits their cart at the exact
+  // moment it expires: their request holds the row lock, so the sweeper skips
+  // that row this time round.
+  // ───────────────────────────────────────────────────────────────────────────
+  async sweep(): Promise<{ expired: number; units: number }> {
+    const done = await this.ds.transaction(async (m) => {
+      const rows: { storeId: number; skuId: number; qty: number }[] = rowsOf(
+        await m.query(
+          `WITH due AS (
+             SELECT id FROM reservations
+             WHERE status = 'held' AND expires_at < now()
+             ORDER BY expires_at
+             LIMIT $1
+             FOR UPDATE SKIP LOCKED
+           )
+           UPDATE reservations r SET status = 'expired', updated_at = now()
+           FROM due WHERE r.id = due.id
+           RETURNING r.store_id AS "storeId", r.sku_id AS "skuId", r.qty`,
+          [SWEEP_BATCH],
+        ),
+      );
+      // Add up per (store, sku) so each inventory row is touched once, and
+      // touch them in a fixed order so two sweepers can't deadlock.
+      const groups = new Map<string, { storeId: number; skuId: number; units: number }>();
+      for (const r of rows) {
+        const k = `${r.storeId}:${r.skuId}`;
+        const g = groups.get(k) ?? { storeId: r.storeId, skuId: r.skuId, units: 0 };
+        g.units += r.qty;
+        groups.set(k, g);
+      }
+      const list = [...groups.values()].sort((a, b) => a.storeId - b.storeId || a.skuId - b.skuId);
+      for (const g of list) {
+        // GREATEST(..., 0): only the naive mode can push this count below the
+        // real number of holds. Clamp so one broken row can't jam the sweeper.
+        await m.query(
+          `UPDATE store_inventory SET reserved_qty = GREATEST(reserved_qty - $3, 0), updated_at = now()
+           WHERE store_id = $1 AND sku_id = $2`,
+          [g.storeId, g.skuId, g.units],
+        );
+      }
+      return { count: rows.length, list };
+    });
+
+    let units = 0;
+    for (const g of done.list) {
+      units += g.units;
+      await this.copyToRedis(g.storeId, g.skuId, g.units);
+    }
+    if (done.count) {
+      this.stats.expiredHolds += done.count;
+      this.log.info(TraceCodes.HOLDS_EXPIRED, { holds: done.count, units, skus: done.list.length });
+    }
+    return { expired: done.count, units };
+  }
+
+  private async sweepTick() {
+    if (this.sweeping) return; // the previous tick is still running in this pod
+    this.sweeping = true;
+    try {
+      // Keep going while full batches come back (a backlog after downtime).
+      while ((await this.sweep()).expired === SWEEP_BATCH);
+    } catch (err) {
+      this.log.error(TraceCodes.HOLD_SWEEP_FAILED, err);
+    } finally {
+      this.sweeping = false;
+    }
   }
 
   // ── helpers ─────────────────────────────────────────────────────────────────
