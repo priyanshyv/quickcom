@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Payments Chaos Lab</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .sc { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 14px; align-items: start; }
+    @media (max-width: 760px) { .sc { grid-template-columns: 1fr; } }
+    .sc + .sc { margin-top: 12px; }
+    .btns { display: flex; flex-direction: column; gap: 6px; }
+    .res { margin-top: 10px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    @media (max-width: 760px) { .res { grid-template-columns: 1fr; } }
+    .run { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #fcfcfd; }
+    .run.bad { border-color: #f1c3be; background: #fffafa; }
+    .run.good { border-color: #bfe3c6; background: #fbfefb; }
+    .run h4 { margin: 0 0 6px; font-size: 13px; display: flex; justify-content: space-between; gap: 8px; }
+    .run ul { margin: 6px 0; padding-left: 18px; }
+    .run li { margin: 2px 0; }
+    .facts { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: #3d4450; margin: 6px 0; }
+    details summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+<script src="/nav.js"></script>
+<div class="page">
+  <h1>Payments chaos lab</h1>
+  <p class="lead">Five things real payment gateways do to you. Each button runs the whole story for real: an order, the mock gateway,
+    signed HTTP webhooks, the outbox, the queue and the SMS consumer. Run it with the <b>naive</b> design
+    (<span class="mono">/webhooks/payment/naive</span>: no signature, no dedupe, no state machine, no reconciler) or the <b>right</b> one,
+    then the lab checks the damage: money, stock, order status and SMS. Calls <span class="mono">POST /admin/lab/payments</span>.</p>
+  <div id="list"></div>
+</div>
+<script src="/shared.js"></script>
+<script>
+  const { rupees, esc, api, statusPill } = QC;
+  const results = {};
+
+  async function load() {
+    const stories = (await api('GET', '/admin/lab/payments')).body;
+    document.getElementById('list').innerHTML = stories.map((s, i) => `
+      <div class="card" id="sc-${s.id}">
+        <div class="sc">
+          <div><div class="muted small">Story ${i + 1}</div><h3 style="font-size:15px;margin:2px 0 4px">${esc(s.id.replace(/-/g, ' '))}</h3>
+            <div>${esc(s.story)}</div><div class="small" style="margin-top:6px"><b>Right answer:</b> ${esc(s.expect)}</div></div>
+          <div class="btns">
+            <button class="btn danger" data-sc="${s.id}" data-h="naive">❌ Run naive</button>
+            <button class="btn primary" data-sc="${s.id}" data-h="right">✅ Run right</button>
+          </div>
+        </div>
+        <div class="res" id="res-${s.id}"></div>
+      </div>`).join('');
+  }
+
+  function view(r) {
+    const ok = !r.problems.length;
+    return `<div class="run ${ok ? 'good' : 'bad'}">
+      <h4><span>${r.handler === 'naive' ? '❌ Naive' : '✅ Right'}</span><span>${statusPill(r.order.status)}</span></h4>
+      ${ok ? '<div style="color:var(--brand);font-weight:700">✓ No problems</div>' : `<ul>${r.problems.map((p) => `<li style="color:var(--bad);font-weight:600">${esc(p)}</li>`).join('')}</ul>`}
+      <div class="facts">
+        <span>charged <b>${rupees(r.money.chargedPaise)}</b></span>
+        <span>refunded <b>${rupees(r.money.refundedPaise)}</b></span>
+        <span>stock books <b>${r.stock.off === 0 ? 'balanced' : (r.stock.off > 0 ? '+' : '') + r.stock.off}</b></span>
+        <span>SMS <b>${r.sms.length}</b></span>
+        <span>${r.ms} ms</span>
+      </div>
+      <details><summary>timeline · webhooks · SMS</summary>
+        <table class="t" style="margin-top:6px">${r.timeline.map((t) => `<tr><td>${t.from ? t.from + ' → ' : ''}<b>${t.to}</b></td><td>${esc(t.reason)}</td><td>${esc(t.actor)}</td></tr>`).join('')}</table>
+        <table class="t" style="margin-top:6px"><tr><th>Webhook</th><th>HTTP</th><th>Our answer</th></tr>${r.webhooks.map((w) => `<tr><td class="mono">${w.forged ? '🕵️ ' : ''}${esc(w.type.replace('payment.', ''))} ${esc(w.eventId.slice(-6))}</td><td>${w.http ?? '—'}</td><td>${esc(w.result ?? '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">none delivered</td></tr>'}</table>
+        <div class="phone" style="margin-top:6px">${r.sms.map((b) => `<div class="bubble">${esc(b)}</div>`).join('') || '<span class="muted small">no SMS</span>'}</div>
+      </details>
+    </div>`;
+  }
+
+  document.getElementById('list').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-sc]');
+    if (!b) return;
+    const sc = b.dataset.sc, h = b.dataset.h;
+    document.querySelectorAll('button[data-sc]').forEach((x) => (x.disabled = true));
+    const old = b.textContent;
+    b.textContent = 'Running…';
+    try {
+      const r = await api('POST', '/admin/lab/payments', { scenario: sc, handler: h });
+      if (r.status !== 200) throw new Error(JSON.stringify(r.body));
+      (results[sc] ??= {})[h] = r.body;
+      document.getElementById('res-' + sc).innerHTML = ['naive', 'right'].map((k) => (results[sc][k] ? view(results[sc][k]) : '<div></div>')).join('');
+    } catch (err) {
+      QC.toast('Run failed: ' + err.message);
+    } finally {
+      b.textContent = old;
+      document.querySelectorAll('button[data-sc]').forEach((x) => (x.disabled = false));
+    }
+  });
+  load();
+</script>
+</body>
+</html>

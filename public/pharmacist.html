@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuickCom Pharmacist</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .q { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+    .wait { font-variant-numeric: tabular-nums; }
+    .wait.slow { color: var(--bad); font-weight: 700; }
+    textarea { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font: inherit; font-size: 12px; resize: vertical; min-height: 34px; }
+  </style>
+</head>
+<body>
+<script src="/nav.js"></script>
+<div class="page">
+  <h1>Prescription review</h1>
+  <p class="lead">Paid orders that contain <span class="rx">Rx</span> medicines stop here (status <b>RX_REVIEW</b>) until a pharmacist approves them.
+    Approve → <b>CONFIRMED</b> and the store can pack it. Reject → <b>CANCELLED</b>: the stock goes back on the shelf and the money is refunded
+    (both through the outbox). Calls <span class="mono">GET /admin/rx-queue</span> and <span class="mono">POST /admin/orders/:id/rx</span>.</p>
+  <div id="queue" class="q"></div>
+</div>
+<script src="/shared.js"></script>
+<script>
+  const { rupees, esc, api, toast } = QC;
+  async function load() {
+    const list = (await api('GET', '/admin/rx-queue')).body;
+    const el = document.getElementById('queue');
+    if (!list.length) {
+      el.innerHTML = `<div class="card muted">No prescriptions waiting.<br><br>To make one: in the <a href="/customer.html">customer app</a> add an <span class="rx">Rx</span> item
+        (Antibiotics, e.g. Amoxicillin), place the order and approve the payment.</div>`;
+      return;
+    }
+    const drafts = {};
+    el.querySelectorAll('textarea').forEach((t) => (drafts[t.dataset.id] = t.value));
+    el.innerHTML = list.map((o) => `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between"><b><a href="/order.html?id=${o.id}">Order #${o.id}</a></b>
+          <span class="wait ${o.waitingSeconds > 300 ? 'slow' : ''}">waiting ${Math.floor(o.waitingSeconds / 60)}m ${o.waitingSeconds % 60}s</span></div>
+        <div class="muted small">${esc(o.storeName)} · ${rupees(o.totalPaise)} (paid)</div>
+        <table class="t" style="margin:8px 0">${o.items.map((i) => `<tr><td>${esc(i.name)}${i.rxRequired ? '<span class="rx">Rx</span>' : ''}</td><td>× ${i.qty}</td></tr>`).join('')}</table>
+        <textarea data-id="${o.id}" placeholder="Note (required for reject), e.g. prescription expired">${esc(drafts[o.id] ?? '')}</textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn primary" data-act="1" data-id="${o.id}">Approve</button>
+          <button class="btn danger" data-act="0" data-id="${o.id}">Reject &amp; refund</button>
+        </div>
+      </div>`).join('');
+  }
+  document.getElementById('queue').addEventListener('click', async (e) => {
+    const b = e.target.closest('button[data-act]');
+    if (!b) return;
+    const approve = b.dataset.act === '1';
+    const note = document.querySelector(`textarea[data-id="${b.dataset.id}"]`).value.trim();
+    if (!approve && !note) return toast('Add a note saying why you reject it.');
+    b.disabled = true;
+    const r = await api('POST', `/admin/orders/${b.dataset.id}/rx`, { approve, note });
+    toast(r.status === 200 ? (approve ? `Order #${b.dataset.id} approved.` : `Order #${b.dataset.id} rejected; refund queued.`) : r.body?.message || 'Failed');
+    load();
+  });
+  load();
+  setInterval(() => { if (!document.activeElement || document.activeElement.tagName !== 'TEXTAREA') load(); }, 2500);
+</script>
+</body>
+</html>
