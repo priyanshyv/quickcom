@@ -6,11 +6,12 @@
   <title>QuickCom Ops Map</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/app.css" />
   <style>
     html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
-    #map { position: absolute; inset: 0; }
+    #map { position: absolute; inset: 52px 0 0 0; }
     .panel {
-      position: absolute; top: 12px; right: 12px; z-index: 1000; background: #fff;
+      position: absolute; top: 64px; right: 12px; z-index: 1000; background: #fff;
       padding: 12px 14px; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.18);
       max-width: 300px; font-size: 13px; line-height: 1.45;
     }
@@ -20,10 +21,10 @@
   </style>
 </head>
 <body>
+<script src="/nav.js"></script>
   <div id="map"></div>
   <div class="panel">
     <h1>QuickCom · Bangalore</h1>
-    <div style="font-size:12px;margin-bottom:6px"><a href="/customer.html">Customer app</a> · <a href="/flash-sale.html">Flash-sale lab</a></div>
     <div id="summary">Loading <code>GET /stores</code>…</div>
     <div id="probe">Click anywhere on the map: the server answers "which store serves this spot?" (chapter 1).</div>
   </div>
