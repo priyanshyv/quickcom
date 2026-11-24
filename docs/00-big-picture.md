@@ -285,3 +285,23 @@ npm run load -- /load/00-smoke.js        # your own baseline numbers
 
 On the map, try clicking **MG Road** (just west of Indiranagar). It's
 not serviceable, and chapter 1 is about what to do with that.
+
+---
+
+## References
+
+**How to read this:** *Measured* = we ran it here and the number is in this
+doc. *Documented* = a public source we opened and checked says it. *Assumption*
+= our own choice or estimate; nobody official has published it. We found no
+engineering write-ups from Blinkit or Zepto on these internals, so anything
+"Blinkit-style" in this chapter is a reasonable design, not a description of
+their system.
+
+- **Assumption:** every Bangalore / "Blinkit-sized city" number in this
+  chapter (orders per day, peak multiplier, riders, pings per second). They
+  are back-of-envelope estimates; replace them with real data.
+- **Measured:** the laptop throughput numbers (`/health/ping`, `/health`, `/stores`).
+- **Documented (context, not internals):**
+  - Flipkart, [1,000 micro-fulfilment centres in 2 years: the Flipkart Minutes story](https://stories.flipkart.com/1-000-micro-fulfilment-centers-in-2-years-the-flipkart-minutes-story) (2026, company newsroom; confirms the dark-store / micro-fulfilment model, few technical details).
+  - MongoDB, [Zepto reduces latency by 40 percent](https://www.mongodb.com/company/blog/innovation/commerce-scale-zepto-reduces-latency-by-40-percent-mongodb) (2024, **vendor case study**, not Zepto engineering): Zepto began as a monolith on Postgres + Redis.
+  - Uber, [Ringpop](https://www.uber.com/us/en/blog/ringpop-open-source-nodejs-library/) (2016): live driver locations are kept sharded in memory, not in a database, "because of how fleeting the location data is" (relevant to chapter 7).

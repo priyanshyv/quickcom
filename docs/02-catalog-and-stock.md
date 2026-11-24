@@ -249,6 +249,24 @@ every pick, sale and delivery, not by a cron.
 
 ---
 
+## References
+
+**How to read this:** *Measured* = we ran it here and the number is in this
+doc. *Documented* = a public source we opened and checked says it. *Assumption*
+= our own choice or estimate; nobody official has published it. We found no
+engineering write-ups from Blinkit or Zepto on these internals, so anything
+"Blinkit-style" in this chapter is a reasonable design, not a description of
+their system.
+
+- **Measured:** all req/s, latency and payload-size numbers.
+- **Documented:**
+  - MDN: [HTTP caching](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/Caching) (ETag / If-None-Match → 304), [Cache-Control](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Cache-Control) (`stale-while-revalidate`), [ETag](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/ETag).
+  - Instacart, [Item availability architecture: solving for scale and consistency](https://company.instacart.com/tech-innovation/instacarts-item-availability-architecture-solving-for-scale-and-consistency) (2023): a full sync plus a lazy refresh of availability, and consistency across every screen "was vital".
+  - Instacart, [Modernizing real-time availability prediction](https://company.instacart.com/tech-innovation/how-instacart-modernized-the-prediction-of-real-time-availability-for-hundreds-of-millions-of-items-while-saving-costs) (2023): when you don't own the shelf, stock is a *probability*. A dark store owns its shelf, which is why QuickCom keeps exact counts.
+- **Assumption:** badges instead of exact numbers, the low-stock threshold of 5, the 60 s catalog refresh.
+
+---
+
 ## Try it
 
 ```bash

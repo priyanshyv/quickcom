@@ -363,6 +363,25 @@ row-level approach fits better.
 
 ---
 
+## 11. References
+
+**How to read this:** *Measured* = we ran it here and the number is in this
+doc. *Documented* = a public source we opened and checked says it. *Assumption*
+= our own choice or estimate; nobody official has published it. We found no
+engineering write-ups from Blinkit or Zepto on these internals, so anything
+"Blinkit-style" in this chapter is a reasonable design, not a description of
+their system.
+
+- **Measured:** every oversell / lost-update / req/s number in sections 2-7.
+- **Documented:**
+  - PostgreSQL, [Read Committed isolation](https://www.postgresql.org/docs/current/transaction-iso.html): after waiting for a row lock, "the search condition of the command (the WHERE clause) is re-evaluated…". That's why Fix A can't oversell.
+  - PostgreSQL, [SELECT → The Locking Clause](https://www.postgresql.org/docs/current/sql-select.html): `SKIP LOCKED` "can be used to avoid lock contention with multiple consumers accessing a queue-like table" (the sweeper).
+  - Redis, [Scripting with Lua](https://redis.io/docs/latest/develop/programmability/eval-intro/): while a script runs, "all server activities are blocked" (the Fix B gate).
+  - Martin Kleppmann, [*Designing Data-Intensive Applications*](https://dataintensive.net/), chapter on transactions ("Preventing Lost Updates"). The chapter number was not verified: the publisher's page blocked automated reading.
+- **Assumption:** holding stock at add-to-cart, the 10-minute hold, the 10-per-line cap. No quick-commerce company we could find has published how it prevents overselling.
+
+---
+
 ## Try it
 
 ```bash
