@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QuickCom Orders</title>
+  <link rel="stylesheet" href="/app.css" />
+  <style>
+    .hero { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
+    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }
+    .big { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 4px 0 2px; }
+    .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+    .orderrow { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); text-decoration: none; color: inherit; }
+    .orderrow:last-child { border-bottom: 0; }
+    .orderrow:hover { background: #fafbfa; }
+    .why { font-size: 12px; color: var(--muted); margin: -4px 0 8px; }
+    .countdown { font-variant-numeric: tabular-nums; font-weight: 700; }
+  </style>
+</head>
+<body>
+<script src="/nav.js"></script>
+<div class="page" id="root"><div class="muted">Loading…</div></div>
+<script src="/shared.js"></script>
+<script>
+  const { cartId, rupees, esc, time, api, statusPill } = QC;
+  const id = new URLSearchParams(location.search).get('id');
+  const root = document.getElementById('root');
+
+  // ── "My orders" list ─────────────────────────────────────────────────────
+  async function list() {
+    const orders = (await api('GET', `/orders?customer=${cartId}`)).body;
+    root.innerHTML = `<h1>My orders</h1>
+      <p class="lead">Orders placed from this browser (customer <span class="mono">${esc(cartId)}</span>).</p>
+      <div class="card">${orders.length ? orders.map((o) => `
+        <a class="orderrow" href="/order.html?id=${o.id}">
+          <span><b>Order #${o.id}</b> ${o.hasRx ? '<span class="rx">Rx</span>' : ''}<br>
+          <span class="muted small">${o.lines} item${o.lines > 1 ? 's' : ''} · ${new Date(o.createdAt).toLocaleString()}</span></span>
+          <span style="text-align:right">${statusPill(o.status)}<br><b>${rupees(o.totalPaise)}</b></span>
+        </a>`).join('') : '<div class="muted">No orders yet. Add something in the <a href="/customer.html">customer app</a> and check out.</div>'}</div>`;
+  }
+
+  // ── One order, live ──────────────────────────────────────────────────────
+  const HEADLINE = {
+    PAYMENT_PENDING: ['Waiting for your payment', 'Your items are held for you until the timer runs out.'],
+    RX_REVIEW: ['A pharmacist is checking your prescription', 'Usually a few minutes. Open the Pharmacist page to play that role.'],
+    CONFIRMED: ['Order confirmed', 'The store will start packing it (chapter 5).'],
+    CANCELLED: ['Order cancelled', ''],
+  };
+
+  function steps(o, timeline) {
+    const reached = new Set(timeline.map((t) => t.to));
+    const paid = reached.has('RX_REVIEW') || reached.has('CONFIRMED');
+    const list = [['Placed', true], ['Paid', paid]];
+    if (o.hasRx) list.push(['Rx checked', reached.has('CONFIRMED')]);
+    list.push(['Confirmed', reached.has('CONFIRMED')]);
+    const html = list.map(([label, done], i) => {
+      const isNow = done && (i === list.length - 1 || !list[i + 1][1]);
+      return `<div class="st ${done ? 'done' : ''} ${isNow && o.status !== 'CANCELLED' ? 'now' : ''}">${label}</div>`;
+    });
+    if (o.status === 'CANCELLED') html.push('<div class="st bad">Cancelled</div>');
+    else ['Packing', 'On the way', 'Delivered'].forEach((l, i) => html.push(`<div class="st future" title="Arrives in chapter ${5 + i}">${l}</div>`));
+    return `<div class="steps">${html.join('')}</div>`;
+  }
+
+  const outcomePill = (r) => ({ applied: 'green', duplicate: 'amber', ignored: 'grey', rejected: 'red' }[r] ? `<span class="pill ${{ applied: 'green', duplicate: 'amber', ignored: 'grey', rejected: 'red' }[r]}">${r}</span>` : `<span class="pill grey">${r ?? '—'}</span>`);
+
+  let timer;
+  async function show() {
+    const r = await api('GET', `/orders/${id}`);
+    if (r.status !== 200) { root.innerHTML = `<div class="card">Order not found. <a href="/order.html">My orders</a></div>`; return; }
+    const { order: o, items, timeline, payments, outbox, notifications } = r.body;
+    // What the gateway actually sent us (every attempt, including duplicates we refused to apply twice).
+    const refs = new Set(payments.map((p) => p.ref));
+    const deliveries = refs.size ? (await api('GET', '/admin/webhooks/deliveries')).body.filter((d) => refs.has(d.paymentRef)).reverse() : []; // oldest first
+    const [head, sub] = HEADLINE[o.status] ?? [o.status, ''];
+    const dueIn = Math.max(0, Math.round((new Date(o.paymentDueAt) - Date.now()) / 1000));
+    const mine = o.customerRef === cartId;
+
+    root.innerHTML = `
+      <div class="muted small"><a href="/order.html">← My orders</a></div>
+      <div class="hero" style="margin-top:8px">
+        <div class="card">
+          <div class="muted small">Order #${o.id} · ${esc(o.storeName)}</div>
+          <div class="big">${head}</div>
+          <div class="muted">${o.status === 'CANCELLED' ? 'Reason: ' + esc(String(o.cancelReason).replace(/_/g, ' ')) : sub}</div>
+          ${steps(o, timeline)}
+          ${o.status === 'PAYMENT_PENDING' ? `<div class="small" style="margin-top:10px">Pay within <span class="countdown" id="due">${Math.floor(dueIn / 60)}:${String(dueIn % 60).padStart(2, '0')}</span>, or the order is cancelled and the stock goes back on the shelf.</div>` : ''}
+          <div class="actions">
+            ${o.status === 'PAYMENT_PENDING' && mine ? `<button class="btn primary" id="payBtn">Pay ${rupees(o.totalPaise)}</button>` : ''}
+            ${['PAYMENT_PENDING', 'RX_REVIEW', 'CONFIRMED'].includes(o.status) && mine ? `<button class="btn danger" id="cancelBtn">Cancel order</button>` : ''}
+          </div>
+        </div>
+        <div class="card">
+          <h3>📱 SMS to the customer</h3>
+          <div class="why">Sent by the queue consumer, from outbox events.</div>
+          <div class="phone">${notifications.length ? notifications.map((n) => `<div class="bubble">${esc(n.body)}<small>${time(n.at)}</small></div>`).join('') : '<span class="muted small">No messages yet…</span>'}</div>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:12px">
+        <div class="card">
+          <h3>Items</h3>
+          <table class="t">${items.map((i) => `<tr><td>${esc(i.name)}${i.rxRequired ? '<span class="rx">Rx</span>' : ''}</td><td>× ${i.qty}</td><td style="text-align:right">${rupees(i.pricePaise * i.qty)}</td></tr>`).join('')}</table>
+          <table class="bill">
+            <tr><td>Items</td><td>${rupees(o.itemsTotalPaise)}</td></tr>
+            <tr><td>Delivery</td><td>${o.deliveryFeePaise ? rupees(o.deliveryFeePaise) : 'FREE'}</td></tr>
+            <tr class="total"><td>Total</td><td>${rupees(o.totalPaise)}</td></tr>
+          </table>
+          <div class="muted small">Prices are a snapshot taken at checkout (order_items), so a later price change can't rewrite this bill.</div>
+        </div>
+        <div class="card">
+          <h3>Status history <span class="muted small">(order_status_log)</span></h3>
+          <div class="why">Every change goes through the state machine; each row says who did it and why.</div>
+          <table class="t"><tr><th>Time</th><th>From → To</th><th>Why</th><th>Who</th></tr>
+          ${timeline.map((t) => `<tr><td class="mono">${time(t.at)}</td><td>${t.from ? statusPill(t.from) + ' → ' : ''}${statusPill(t.to)}</td><td>${esc(t.reason)}</td><td>${esc(t.actor)}</td></tr>`).join('')}</table>
+        </div>
+      </div>
+
+      <h2>Behind the scenes</h2>
+      <div class="grid3">
+        <div class="card">
+          <h3>Payment attempts <span class="muted small">(payments)</span></h3>
+          <div class="why">At most one open attempt at a time; a retry after a failure opens a new one.</div>
+          ${payments.length ? `<table class="t"><tr><th>Ref</th><th>Amount</th><th>Status</th></tr>${payments.map((p) => `<tr><td class="mono">${esc(p.ref)}</td><td>${rupees(p.amountPaise)}</td><td>${p.status}</td></tr>`).join('')}</table>` : '<span class="muted small">None yet.</span>'}
+        </div>
+        <div class="card">
+          <h3>Webhooks from the gateway</h3>
+          <div class="why">Every delivery, and what our server answered. Duplicates are answered 200 but change nothing.</div>
+          ${deliveries.length ? `<table class="t"><tr><th>Event</th><th>Type</th><th>HTTP</th><th>Result</th></tr>${deliveries.map((d) => `<tr><td class="mono">${esc(d.eventId.slice(0, 12))}</td><td>${d.type.replace('payment.', '')}</td><td>${d.httpStatus ?? '—'}</td><td>${outcomePill(d.result)}</td></tr>`).join('')}</table>` : '<span class="muted small">None received. (Lost webhook? The reconciler checks the gateway after 30 s.)</span>'}
+        </div>
+        <div class="card">
+          <h3>Outbox events <span class="muted small">(outbox)</span></h3>
+          <div class="why">Written in the same transaction as each change; the relay then copies them to the queue.</div>
+          <table class="t"><tr><th>#</th><th>Event</th><th>Relay</th></tr>
+          ${outbox.map((e) => `<tr><td class="mono">${e.id}</td><td>${e.type}${e.payload?.to ? ' → ' + e.payload.to : ''}</td><td>${e.publishedAt ? '<span class="pill green">published</span>' : '<span class="pill amber">pending</span>'}</td></tr>`).join('')}</table>
+        </div>
+      </div>
+
+      <details class="card" style="margin-top:12px"><summary class="muted small">API calls this page made</summary><div class="apilog" id="apilog" style="margin-top:8px"></div></details>`;
+    QC.setLog(document.getElementById('apilog'));
+    const payBtn = document.getElementById('payBtn');
+    if (payBtn) payBtn.onclick = () => QC.pay(o.id, show);
+    const cancelBtn = document.getElementById('cancelBtn');
+    if (cancelBtn) cancelBtn.onclick = async () => {
+      if (!confirm('Cancel this order? Held stock goes back on the shelf; any payment is refunded.')) return;
+      const c = await api('POST', `/orders/${o.id}/cancel`, { cartId });
+      if (c.status >= 300) QC.toast(c.body?.message || 'Could not cancel');
+      show();
+    };
+  }
+
+  if (id) {
+    show();
+    // Chapter 7 replaces this polling with a live push (SSE).
+    timer = setInterval(() => { if (!document.querySelector('.scrim')) show(); }, 1500);
+  } else list();
+</script>
+</body>
+</html>

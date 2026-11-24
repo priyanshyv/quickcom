@@ -49,7 +49,8 @@ describe('Chapter 2 — catalog + per-store stock', () => {
 
   it('write path: restocking updates Postgres AND the home screen immediately', async () => {
     const [{ sku_id: skuId, on_hand_qty: original }] = await ds.query(
-      `SELECT sku_id, on_hand_qty FROM store_inventory WHERE store_id = 1 ORDER BY sku_id LIMIT 1`,
+      // an item nobody has in a cart or order, so available = on hand
+      `SELECT sku_id, on_hand_qty FROM store_inventory WHERE store_id = 1 AND reserved_qty = 0 ORDER BY sku_id LIMIT 1`,
     );
     try {
       await request(app.getHttpServer()).post('/admin/stores/1/stock').send({ skuId, onHand: 0 }).expect(201);

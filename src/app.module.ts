@@ -10,6 +10,7 @@ import { CatalogModule } from './catalog/catalog.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { HomeModule } from './home/home.module';
 import { CartModule } from './cart/cart.module';
+import { OrdersModule } from './orders/orders.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { CartModule } from './cart/cart.module';
     InventoryModule, // chapter 2
     HomeModule, // chapter 2
     CartModule, // chapter 3
+    OrdersModule, // chapter 4
   ],
 })
 export class AppModule {}

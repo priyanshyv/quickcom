@@ -4,12 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Flash-Sale Lab</title>
+  <link rel="stylesheet" href="/app.css" />
   <style>
     :root { --ok: #0c831f; --bad: #b3261e; --muted: #666; --line: #e6e6e6; }
     * { box-sizing: border-box; }
     body { margin: 0; font-family: system-ui, sans-serif; color: #111; background: #fff; }
     main { max-width: 980px; margin: 0 auto; padding: 20px 16px 60px; }
-    nav { font-size: 12px; margin-bottom: 10px; } nav a { color: var(--muted); margin-right: 10px; }
     h1 { font-size: 22px; margin: 0 0 6px; }
     p.lead { color: #333; margin: 0 0 16px; max-width: 760px; line-height: 1.5; }
     .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: end; margin-bottom: 14px; font-size: 13px; }
@@ -35,8 +35,8 @@
   </style>
 </head>
 <body>
+<script src="/nav.js"></script>
 <main>
-  <nav><a href="/ops.html">Ops map</a><a href="/customer.html">Customer app</a><a href="/flash-sale.html">Flash-sale lab</a></nav>
   <h1>Flash-sale lab: lots of buyers, few strips</h1>
   <p class="lead">Each button makes exactly <b>units</b> of one item available at the Koramangala store, then has
     <b>buyers</b> different carts tap <b>ADD</b> at the same instant. Afterwards it counts what happened and puts the stock back.

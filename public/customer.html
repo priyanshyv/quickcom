@@ -6,222 +6,264 @@
   <title>QuickCom Customer</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/app.css" />
   <style>
-    :root { --ok: #0c831f; --warn: #b26a00; --bad: #b3261e; --muted: #666; --line: #e6e6e6; }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; background: #fff; color: #111; }
-    .wrap { display: grid; grid-template-columns: 1fr 440px; height: 100%; }
+    body { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+    .shop { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 500px; min-height: 0; }
     #map { height: 100%; }
-    .side { overflow-y: auto; border-left: 1px solid var(--line); padding: 14px 16px 40px; }
-    @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; grid-template-rows: 40vh 1fr; } .side { border-left: 0; border-top: 1px solid var(--line); } }
-    h1 { font-size: 16px; margin: 0 0 4px; }
-    nav { font-size: 12px; margin-bottom: 8px; } nav a { color: var(--muted); margin-right: 10px; }
-    .presets button { font-size: 12px; margin: 0 4px 6px 0; padding: 4px 8px; border: 1px solid var(--line); background: #fafafa; border-radius: 6px; cursor: pointer; }
-    .banner { padding: 10px 12px; border-radius: 8px; margin: 8px 0 12px; font-size: 14px; }
-    .banner.ok { background: #eaf7ec; } .banner.bad { background: #fdecea; }
-    .banner b.eta { font-size: 20px; color: var(--ok); }
-    .debug { font-size: 11px; color: var(--muted); margin-top: 4px; font-family: ui-monospace, monospace; }
-    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
-    .item { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; }
-    .item .name small { color: var(--muted); }
-    .item .right { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-    .rx { font-size: 10px; background: #eef; color: #335; padding: 1px 4px; border-radius: 4px; margin-left: 4px; }
-    .badge { font-size: 11px; white-space: nowrap; }
-    .badge.in { color: var(--ok); } .badge.low { color: var(--warn); font-weight: 600; } .badge.out { color: var(--bad); }
-    .item.out .name { opacity: .45; }
-    button.add { border: 1px solid var(--ok); color: var(--ok); background: #fff; border-radius: 6px; padding: 3px 14px; font-weight: 600; cursor: pointer; }
-    .stepper { display: inline-flex; align-items: center; background: var(--ok); color: #fff; border-radius: 6px; font-weight: 600; }
-    .stepper button { background: none; border: 0; color: #fff; padding: 3px 9px; cursor: pointer; font-size: 14px; }
-    .stepper span { min-width: 16px; text-align: center; }
-    .cartbar { position: sticky; top: -14px; z-index: 5; background: var(--ok); color: #fff; border-radius: 8px; padding: 9px 12px; margin: 6px 0 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
-    .cartbar.empty { background: #f3f3f3; color: var(--muted); }
-    .cartbar button { background: rgba(255,255,255,.2); border: 0; color: inherit; border-radius: 5px; padding: 3px 8px; cursor: pointer; font-size: 12px; }
-    .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: #222; color: #fff; padding: 9px 14px; border-radius: 8px; font-size: 13px; z-index: 2000; display: none; }
-    details.apilog { margin-top: 18px; font-size: 11px; }
-    details.apilog summary { cursor: pointer; color: var(--muted); }
-    #log { font-family: ui-monospace, monospace; margin-top: 6px; }
-    #log div { padding: 2px 0; border-bottom: 1px dotted var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #log .s409 { color: var(--bad); } #log .s200 { color: var(--ok); }
+    .app { overflow-y: auto; background: var(--bg); border-left: 1px solid var(--line); position: relative; display: flex; flex-direction: column; }
+    .app > * { flex-shrink: 0; } /* a scrolling flex column must not squash its children */
+    @media (max-width: 900px) { body { overflow: auto; height: auto; } .shop { grid-template-columns: 1fr; } #map { height: 38vh; } .app { overflow: visible; } }
+    .where { margin: 12px; }
+    .where .eta { font-size: 24px; font-weight: 800; letter-spacing: -.02em; }
+    .where .eta.bad { color: var(--bad); font-size: 18px; }
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+    .chip { border: 1px solid var(--line); background: var(--surface); border-radius: 999px; padding: 4px 11px; font-size: 12px; }
+    .chip:hover { border-color: var(--brand); color: var(--brand); }
+    .cats { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 6px 12px 8px; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; border-bottom: 1px solid var(--line); }
+    .cats a { white-space: nowrap; text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; font-size: 12px; }
+    .section { padding: 4px 12px 0; }
+    .section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 2px 8px; }
+    .products { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .p { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 6px; min-height: 128px; }
+    .p .nm { font-weight: 600; font-size: 13px; line-height: 1.3; }
+    .p .pk { color: var(--muted); font-size: 12px; }
+    .p .row { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    .p .price { font-weight: 800; }
+    .p.out { opacity: .55; }
+    .stock { font-size: 11px; font-weight: 600; }
+    .stock.in { color: var(--brand); } .stock.low { color: var(--warn); } .stock.out { color: var(--bad); }
+    .add { border: 1px solid var(--brand); color: var(--brand); background: var(--brand-soft); border-radius: 8px; padding: 4px 16px; font-weight: 800; font-size: 12px; }
+    .stepper { display: inline-flex; align-items: center; background: var(--brand); color: #fff; border-radius: 8px; font-weight: 800; }
+    .stepper button { background: none; border: 0; color: #fff; padding: 4px 10px; font-size: 14px; }
+    .stepper span { min-width: 14px; text-align: center; font-size: 13px; }
+    .cartbar { position: sticky; bottom: 10px; margin: 12px; z-index: 6; background: var(--brand); color: #fff; border: 0; border-radius: 12px; padding: 11px 14px; display: none; justify-content: space-between; align-items: center; box-shadow: 0 6px 20px rgba(12,131,31,.35); width: calc(100% - 24px); text-align: left; }
+    .cartbar.show { display: flex; }
+    .cartbar small { opacity: .85; }
+    .empty-state { margin: 30px 12px; text-align: center; color: var(--muted); }
+    .log { margin: 18px 12px 70px; }
+    .log summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+    .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+    .line:last-child { border-bottom: 0; }
   </style>
 </head>
 <body>
-<div class="wrap">
+<script src="/nav.js"></script>
+<div class="shop">
   <div id="map"></div>
-  <div class="side">
-    <h1>QuickCom · customer app</h1>
-    <nav><a href="/ops.html">Ops map</a><a href="/customer.html">Customer app</a><a href="/flash-sale.html">Flash-sale lab</a></nav>
-    <div class="presets">
-      <button data-ll="12.9346,77.6113">Forum Mall</button>
-      <button data-ll="12.9250,77.6350">KOR/HSR overlap</button>
-      <button data-ll="12.9756,77.6066">MG Road (gap)</button>
-      <button data-ll="12.8452,77.6602">Electronic City</button>
+  <div class="app" id="app">
+    <div class="card where" id="where">
+      <div class="eta muted" style="font-size:16px;font-weight:600">Where should we deliver?</div>
+      <div class="muted small">Click the map, or pick a spot:</div>
+      <div class="chips" id="presets">
+        <button class="chip" data-ll="12.9346,77.6113">Forum Mall</button>
+        <button class="chip" data-ll="12.9250,77.6350">KOR/HSR overlap</button>
+        <button class="chip" data-ll="12.9756,77.6066">MG Road (gap)</button>
+        <button class="chip" data-ll="12.8452,77.6602">Electronic City</button>
+      </div>
     </div>
-    <div style="font-size:12px;color:var(--muted)">Or click anywhere on the map to "open the app" there.</div>
-    <div id="cartbar" class="cartbar empty">🛒 Cart is empty</div>
-    <div id="out"></div>
-    <details class="apilog" open>
+    <div class="cats" id="cats" style="display:none"></div>
+    <div id="catalog"></div>
+    <button class="cartbar" id="cartbar"></button>
+    <details class="card log">
       <summary>API calls this page made (newest first)</summary>
-      <div id="log"></div>
+      <div class="apilog" id="apilog" style="margin-top:8px"></div>
     </details>
   </div>
 </div>
-<div class="toast" id="toast"></div>
+
+<div class="scrim" id="cartScrim"><div class="sheet" id="cartSheet"></div></div>
+
+<script src="/shared.js"></script>
 <script>
+  const { cartId, rupees, esc, api, toast } = QC;
+  QC.setLog(document.getElementById('apilog'));
+
   const map = L.map('map').setView([12.95, 77.63], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '&copy; OpenStreetMap' }).addTo(map);
+  api('GET', '/stores').then(({ body: fc }) => L.geoJSON(fc, {
+    style: { color: '#0c831f', weight: 1, fillOpacity: 0.06 },
+    pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#0c831f', fillOpacity: 1 }).bindTooltip(f.properties.code),
+  }).addTo(map));
 
-  // One cart id per browser, like a real app keeps one per device/session.
-  let cartId;
-  try { cartId = localStorage.getItem('quickcom.cartId'); } catch (e) {}
-  if (!cartId) {
-    cartId = 'web-' + Math.random().toString(36).slice(2, 10);
-    try { localStorage.setItem('quickcom.cartId', cartId); } catch (e) {}
-  }
+  let pin, home = null, cart = { items: [] }, tick;
 
-  // Every request goes through here so you can SEE which API each tap uses.
-  async function api(method, path, body) {
-    const t0 = performance.now();
-    const res = await fetch(path, {
-      method, headers: body ? { 'content-type': 'application/json' } : {},
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const ms = (performance.now() - t0).toFixed(0);
-    const log = document.getElementById('log');
-    const row = document.createElement('div');
-    row.className = 's' + res.status;
-    row.textContent = `${method} ${path}${body ? ' ' + JSON.stringify(body) : ''} → ${res.status} · ${ms} ms`;
-    log.prepend(row);
-    while (log.children.length > 12) log.lastChild.remove();
-    return { status: res.status, body: await res.json().catch(() => null) };
-  }
-
-  api('GET', '/stores').then(({ body: fc }) => {
-    L.geoJSON(fc, {
-      style: { color: '#0c831f', weight: 1, fillOpacity: 0.06 },
-      pointToLayer: (f, ll) => L.circleMarker(ll, { radius: 6, color: '#0c831f', fillOpacity: 1 }).bindTooltip(f.properties.code),
-    }).addTo(map);
-  });
-
-  const rupees = (p) => '₹' + (p / 100).toFixed(p % 100 ? 2 : 0);
-  const badge = (s) => s === 'in' ? '<span class="badge in">In stock</span>'
-    : s === 'out' ? '<span class="badge out">Out of stock</span>'
-    : `<span class="badge low">Only ${s.split(':')[1]} left</span>`;
-
-  let you, home = null, cart = { items: [] }, expiryTimer;
-
-  function toast(msg) {
-    const t = document.getElementById('toast');
-    t.textContent = msg; t.style.display = 'block';
-    clearTimeout(t._h); t._h = setTimeout(() => (t.style.display = 'none'), 2600);
-  }
-
-  // ── Chapter 1 + 2: open the app at a point ─────────────────────────────────
-  async function open(lat, lng) {
-    if (you) you.remove();
-    you = L.marker([lat, lng]).addTo(map);
-    const t0 = performance.now();
-    const { body } = await api('GET', `/home?lat=${lat}&lng=${lng}`);
-    home = body;
-    home.ms = (performance.now() - t0).toFixed(1);
+  // ── Chapter 1 + 2: "open the app" at a point ──────────────────────────────
+  async function openAt(lat, lng) {
+    if (pin) pin.remove();
+    pin = L.marker([lat, lng]).addTo(map);
+    home = (await api('GET', `/home?lat=${lat}&lng=${lng}`)).body;
     await loadCart();
   }
 
-  // ── Chapter 3: the cart ────────────────────────────────────────────────────
+  // ── Chapter 3: the cart (holds) ───────────────────────────────────────────
   async function loadCart() {
     cart = (await api('GET', `/carts/${cartId}`)).body;
     render();
   }
+  const inCart = (skuId) => cart.items.find((i) => i.storeId === home?.location?.store?.id && i.skuId === skuId)?.qty ?? 0;
 
-  const inCart = (storeId, skuId) => cart.items.find((i) => i.storeId === storeId && i.skuId === skuId)?.qty ?? 0;
-
-  async function setQty(skuId, qty) {
-    const storeId = home.location.store.id;
+  async function setQty(skuId, qty, storeId = home.location.store.id) {
     const r = await api('PUT', `/carts/${cartId}/items`, { storeId, skuId, qty });
-    if (r.status === 409) {
-      const b = r.body.stock;
-      toast(b === 'out' ? 'Sorry, someone just took the last one.' : `Sorry, only ${b.split(':')[1]} left.`);
-    } else if (r.status !== 200) {
-      toast(r.body?.message?.toString() ?? 'Something went wrong');
-    }
-    // Refresh ONLY the small things that changed: this store's stock badges
-    // (chapter 2's split API) and the cart. The catalog part is still on screen.
-    const stock = (await api('GET', `/stores/${storeId}/stock`)).body.badges;
-    for (const sec of home.sections) for (const it of sec.items) if (stock[it.id]) it.stock = stock[it.id];
+    if (r.status === 409) toast(r.body.stock === 'out' ? 'Sorry, someone just took the last one.' : `Sorry, only ${String(r.body.stock).split(':')[1]} left.`);
+    else if (r.status >= 300) toast([].concat(r.body?.message ?? 'Something went wrong').join(', '));
+    await refreshStock(storeId);
     await loadCart();
+    if (document.getElementById('cartScrim').classList.contains('open')) openCart();
+  }
+  async function refreshStock(storeId) {
+    if (!home?.sections || home.location.store.id !== storeId) return;
+    const badges = (await api('GET', `/stores/${storeId}/stock`)).body.badges;
+    for (const s of home.sections) for (const it of s.items) if (badges[it.id]) it.stock = badges[it.id];
+  }
+
+  // ── render ─────────────────────────────────────────────────────────────────
+  const stockText = (s) => s === 'in' ? '<span class="stock in">In stock</span>' : s === 'out' ? '<span class="stock out">Out of stock</span>' : `<span class="stock low">Only ${s.split(':')[1]} left</span>`;
+
+  function render() {
+    renderWhere();
+    renderCatalog();
+    renderCartBar();
+  }
+
+  function renderWhere() {
+    if (!home) return;
+    const loc = home.location, el = document.getElementById('where');
+    const presets = document.getElementById('presets').outerHTML;
+    el.innerHTML = loc.serviceable
+      ? `<div class="eta">⚡ ${loc.promiseMinutes} minutes</div>
+         <div>from <b>${esc(loc.store.name)}</b> · ${(loc.distanceMeters / 1000).toFixed(1)} km away
+         ${loc.alternatives.length ? `<span class="muted small"> · also covered by ${loc.alternatives.join(', ')}</span>` : ''}</div>
+         <div class="muted small mono" style="margin-top:4px">serviceability via ${loc.via} · cell ${loc.cell}</div>${presets}`
+      : `<div class="eta bad">We don't deliver here yet</div><div class="muted">You're between our stores' delivery areas.</div>${presets}`;
+    bindPresets();
+  }
+
+  function renderCatalog() {
+    const cats = document.getElementById('cats'), out = document.getElementById('catalog');
+    if (!home?.location?.serviceable) { cats.style.display = 'none'; out.innerHTML = home ? '' : '<div class="empty-state">Pick a spot on the map to see what you can buy.</div>'; return; }
+    cats.style.display = 'flex';
+    cats.innerHTML = home.sections.map((s, i) => `<a href="#cat-${i}">${esc(s.category)}</a>`).join('');
+    out.innerHTML = home.sections.map((s, i) => `
+      <div class="section" id="cat-${i}"><h3>${esc(s.category)}</h3><div class="products">
+        ${s.items.map((it) => {
+          const q = inCart(it.id);
+          const ctl = q > 0
+            ? `<span class="stepper"><button data-sku="${it.id}" data-q="${q - 1}">−</button><span>${q}</span><button data-sku="${it.id}" data-q="${q + 1}">+</button></span>`
+            : it.stock === 'out' ? '' : `<button class="add" data-sku="${it.id}" data-q="1">ADD</button>`;
+          return `<div class="p ${it.stock === 'out' && !q ? 'out' : ''}">
+            <div class="nm">${esc(it.name)}${it.rxRequired ? '<span class="rx">Rx</span>' : ''}</div>
+            <div class="pk">${esc(it.packSize)}</div>
+            ${stockText(it.stock)}
+            <div class="row"><span class="price">${rupees(it.mrpPaise)}</span>${ctl}</div>
+          </div>`;
+        }).join('')}
+      </div></div>`).join('');
   }
 
   function renderCartBar() {
     const bar = document.getElementById('cartbar');
-    clearInterval(expiryTimer);
-    if (!cart.items.length) {
-      bar.className = 'cartbar empty';
-      bar.innerHTML = '🛒 Cart is empty';
-      return;
-    }
-    bar.className = 'cartbar';
-    const tick = () => {
+    clearInterval(tick);
+    if (!cart.items.length) { bar.classList.remove('show'); return; }
+    bar.classList.add('show');
+    const draw = () => {
       const s = Math.max(0, Math.round((new Date(cart.firstExpiresAt) - Date.now()) / 1000));
-      const left = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-      bar.innerHTML = `<span>🛒 <b>${cart.units} item${cart.units > 1 ? 's' : ''}</b> · ${rupees(cart.totalPaise)}
-        · <span title="Stock is held for you this long after your last change">held ${left}</span></span>
-        <button id="empty">Empty cart</button>`;
-      document.getElementById('empty').onclick = async () => {
-        await api('DELETE', `/carts/${cartId}`);
-        if (home?.location?.serviceable) await setQtyRefreshOnly(); else await loadCart();
-      };
-      // The server's sweeper releases it within ~5 s of this hitting 0.
-      if (s === 0) { clearInterval(expiryTimer); setTimeout(loadCart, 6000); }
+      bar.innerHTML = `<span><b>${cart.units} item${cart.units > 1 ? 's' : ''} · ${rupees(cart.totalPaise)}</b><br>
+        <small>held for you ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}</small></span><b>View cart ›</b>`;
+      if (s === 0) { clearInterval(tick); setTimeout(loadCart, 6000); }
     };
-    tick();
-    expiryTimer = setInterval(tick, 1000);
+    draw();
+    tick = setInterval(draw, 1000);
   }
 
-  async function setQtyRefreshOnly() {
-    const storeId = home.location.store.id;
-    const stock = (await api('GET', `/stores/${storeId}/stock`)).body.badges;
-    for (const sec of home.sections) for (const it of sec.items) if (stock[it.id]) it.stock = stock[it.id];
-    await loadCart();
+  // ── Chapter 4: cart sheet + checkout ───────────────────────────────────────
+  function openCart() {
+    const scrim = document.getElementById('cartScrim'), sheet = document.getElementById('cartSheet');
+    if (!cart.items.length) { scrim.classList.remove('open'); return; }
+    const items = cart.totalPaise;
+    const fee = items >= 19900 ? 0 : 2500;
+    const hasRx = cart.items.some((i) => i.rxRequired);
+    sheet.innerHTML = `
+      <h2><span>Your cart</span><button class="x" data-close>×</button></h2>
+      ${cart.items.map((i) => `<div class="line">
+        <div><div style="font-weight:600">${esc(i.name)}${i.rxRequired ? '<span class="rx">Rx</span>' : ''}</div>
+          <div class="muted small">${esc(i.packSize)} · ${rupees(i.mrpPaise)}</div></div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="stepper"><button data-sku="${i.skuId}" data-store="${i.storeId}" data-q="${i.qty - 1}">−</button><span>${i.qty}</span><button data-sku="${i.skuId}" data-store="${i.storeId}" data-q="${i.qty + 1}">+</button></span>
+          <b style="min-width:52px;text-align:right">${rupees(i.lineTotalPaise)}</b></div>
+      </div>`).join('')}
+      <table class="bill">
+        <tr><td>Items</td><td>${rupees(items)}</td></tr>
+        <tr><td>Delivery ${fee ? `<span class="muted small">(free above ₹199)</span>` : ''}</td><td>${fee ? rupees(fee) : '<span class="pill green">FREE</span>'}</td></tr>
+        <tr class="total"><td>To pay</td><td>${rupees(items + fee)}</td></tr>
+      </table>
+      ${hasRx ? `<div class="card small" style="background:var(--info-soft);border-color:#cfdcf7;box-shadow:none;margin-bottom:12px">
+        <b>Prescription needed.</b> After you pay, a pharmacist checks your prescription before the store packs the order.</div>` : ''}
+      <button class="btn primary block" id="placeBtn">Place order · ${rupees(items + fee)}</button>
+      <p class="muted small" style="margin:10px 0 0">Prices are re-checked by the server at checkout; the bill above is a preview.</p>`;
+    scrim.classList.add('open');
+    sheet.querySelector('[data-close]').onclick = () => scrim.classList.remove('open');
+    sheet.querySelector('#placeBtn').onclick = placeOrder;
   }
 
-  function render() {
-    renderCartBar();
-    const el = document.getElementById('out');
-    if (!home) return;
-    const loc = home.location;
-    const dbg = `<div class="debug">serviceability via <b>${loc.via}</b> · cell ${loc.cell} · ${home.ms} ms round trip</div>`;
-    if (!loc.serviceable) {
-      el.innerHTML = `<div class="banner bad"><b>Sorry, we don't deliver here yet.</b><br>You're between our stores' delivery areas.${dbg}</div>`;
-      return;
+  // The Idempotency-Key is made ONCE per checkout and kept until it succeeds,
+  // so a retry after a timeout sends the same key -> the same order.
+  async function placeOrder() {
+    const btn = document.getElementById('placeBtn');
+    btn.disabled = true;
+    const keyName = 'quickcom.checkoutKey.' + cartId;
+    let key;
+    try { key = sessionStorage.getItem(keyName); } catch (e) {}
+    if (!key) {
+      key = 'ck-' + crypto.randomUUID().replace(/-/g, '').slice(0, 20);
+      try { sessionStorage.setItem(keyName, key); } catch (e) {}
     }
-    let html = `<div class="banner ok">Delivering in <b class="eta">${loc.promiseMinutes} min</b><br>
-      from <b>${loc.store.name}</b> · ${(loc.distanceMeters / 1000).toFixed(1)} km away
-      ${loc.alternatives.length ? `<br><small>Also covered by: ${loc.alternatives.join(', ')}</small>` : ''}${dbg}</div>`;
-    for (const sec of home.sections) {
-      html += `<h2>${sec.category}</h2>`;
-      for (const it of sec.items) {
-        const q = inCart(loc.store.id, it.id);
-        const control = q > 0
-          ? `<span class="stepper"><button data-sku="${it.id}" data-q="${q - 1}">−</button><span>${q}</span><button data-sku="${it.id}" data-q="${q + 1}">+</button></span>`
-          : it.stock === 'out' ? '' : `<button class="add" data-sku="${it.id}" data-q="1">ADD</button>`;
-        html += `<div class="item ${it.stock === 'out' && !q ? 'out' : ''}">
-          <div class="name">${it.name}${it.rxRequired ? '<span class="rx">Rx</span>' : ''}<br><small>${it.packSize} · ${rupees(it.mrpPaise)}</small></div>
-          <div class="right">${control}${badge(it.stock)}</div></div>`;
+    try {
+      const r = await api('POST', '/orders', { cartId }, { 'idempotency-key': key });
+      if (r.status === 201) {
+        try { sessionStorage.removeItem(keyName); } catch (e) {}
+        document.getElementById('cartScrim').classList.remove('open');
+        const id = r.body.order.id;
+        await loadCart();
+        QC.pay(id, () => (location.href = `/order.html?id=${id}`));
+      } else {
+        try { sessionStorage.removeItem(keyName); } catch (e) {}
+        toast(r.body?.message || 'Could not place the order');
+        btn.disabled = false;
       }
+    } catch (e) {
+      toast('Network trouble. Tap again: the same key makes it safe.');
+      btn.disabled = false;
     }
-    el.innerHTML = html;
   }
 
-  document.getElementById('out').addEventListener('click', (e) => {
+  // ── events ─────────────────────────────────────────────────────────────────
+  document.getElementById('catalog').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-sku]');
     if (b) setQty(Number(b.dataset.sku), Number(b.dataset.q));
   });
-  map.on('click', (e) => open(e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6)));
-  document.querySelectorAll('.presets button').forEach(b => b.onclick = () => {
-    const [lat, lng] = b.dataset.ll.split(',');
-    map.setView([lat, lng], 14);
-    open(lat, lng);
+  document.getElementById('cartSheet').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-sku]');
+    if (b) setQty(Number(b.dataset.sku), Number(b.dataset.q), Number(b.dataset.store));
   });
-  loadCart();
+  document.getElementById('cartbar').onclick = openCart;
+  document.getElementById('cartScrim').addEventListener('click', (e) => { if (e.target.id === 'cartScrim') e.target.classList.remove('open'); });
+  map.on('click', (e) => openAt(e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6)));
+  function bindPresets() {
+    document.querySelectorAll('#presets .chip').forEach((b) => (b.onclick = () => {
+      const [lat, lng] = b.dataset.ll.split(',');
+      map.setView([lat, lng], 14);
+      openAt(lat, lng);
+    }));
+  }
+  bindPresets();
+  // Deep link: /customer.html?at=12.9346,77.6113 opens the app at that spot.
+  const at = new URLSearchParams(location.search).get('at');
+  if (at && /^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(at)) {
+    const [lat, lng] = at.split(',');
+    map.setView([lat, lng], 14);
+    openAt(lat, lng);
+  } else loadCart();
 </script>
 </body>
 </html>

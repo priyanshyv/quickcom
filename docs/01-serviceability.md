@@ -266,6 +266,25 @@ store and the other side 15.
 
 ---
 
+## References
+
+**How to read this:** *Measured* = we ran it here and the number is in this
+doc. *Documented* = a public source we opened and checked says it. *Assumption*
+= our own choice or estimate; nobody official has published it. We found no
+engineering write-ups from Blinkit or Zepto on these internals, so anything
+"Blinkit-style" in this chapter is a reasonable design, not a description of
+their system.
+
+- **Measured:** all latency / hit-rate / Postgres-queries-per-request numbers.
+- **Documented:**
+  - PostGIS docs: [ST_Covers](https://postgis.net/docs/ST_Covers.html) (can use spatial indexes), [ST_GeomFromGeoHash](https://postgis.net/docs/ST_GeomFromGeoHash.html), [GiST indexes](https://postgis.net/docs/using_postgis_dbmanagement.html#gist_indexes).
+  - Uber, [H3: Uber's Hexagonal Hierarchical Spatial Index](https://www.uber.com/blog/h3/) (2018): "hexagons minimize the quantization error introduced when users move through a city".
+- **Found by search, not yet verified** (the pages blocked automated reading; open them yourself): Swiggy Bytes, *Designing the Serviceability Platform at Swiggy for High Scale, Part 1* and *What Serviceability means at Swiggy*.
+- **Assumption:** 3 km circular delivery areas, geohash precision 7, the
+  3 min + distance × 1.4 ÷ 250 m/min promise formula.
+
+---
+
 ## Try it
 
 ```bash

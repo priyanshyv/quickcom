@@ -14,9 +14,12 @@ same pattern:
 5. **How a typical (pincode-based) e-commerce backend does it**, for contrast.
 6. **Takeaways if you build this for real.**
 
-Nothing here is mocked. Every number in `docs/` came from running the code
+Nothing here is mocked (except the payment gateway, which is a local stand-in
+that misbehaves on purpose). Every number in `docs/` came from running the code
 against a real Postgres and Redis on a laptop (Apple silicon, k6 in Docker on
-the same machine), so treat them as relative, not absolute.
+the same machine), so treat them as relative, not absolute. Each chapter ends
+with **References** that separate what we *measured*, what a public source
+*documents*, and what is our own *assumption*.
 
 ## Quick start
 
@@ -25,8 +28,8 @@ npm install
 npm run db:up                         # Postgres+PostGIS :5434, Redis :6381
 npm run db:reset                      # tables + Bangalore seed data
 npm run build && npm run start:prod   # API on :4000
-open http://localhost:4000/ops.html   # the city on a map; click anywhere
-npm run test:e2e                      # every chapter's claims, as tests
+open http://localhost:4000/customer.html   # the customer app (top bar links every page)
+npm run test:e2e                           # every chapter's claims, as tests
 ```
 
 > **Docker not running?** `Cannot connect to the Docker daemon` means Docker
@@ -43,8 +46,8 @@ local Postgres/Redis containers.
 | 1 | [Serviceability](docs/01-serviceability.md): "can you deliver here, from which store?" (PostGIS, geohash cache, edge cells, version-bump invalidation) | ✅ |
 | 2 | [Catalog + per-store stock](docs/02-catalog-and-stock.md): read path vs write path, in-memory catalog + ETag/CDN, Redis stock hash, drift repair, split API | ✅ |
 | 3 | [Cart + overselling](docs/03-cart-and-overselling.md): lost updates, conditional UPDATE, Redis Lua gate, hold expiry with `SKIP LOCKED` | ✅ |
-| 4 | Checkout, payment webhooks, order state machine, outbox | next |
-| 5 | Store ops: pick and pack, FEFO, store capacity | |
+| 4 | [Checkout + payments](docs/04-checkout-and-payments.md): Idempotency-Key, state machine, signed webhooks + inbox, reconciler, outbox + partitions, Rx review | ✅ |
+| 5 | Store ops: pick and pack, FEFO, store capacity | next |
 | 6 | Rider dispatch: nearest free rider, no double-assignment | |
 | 7 | Live rider tracking: GPS pings → Redis → SSE across pods | |
 | 8 | ETA: "arriving in 4 min" | |
@@ -59,6 +62,7 @@ local Postgres/Redis containers.
 | `npm run db:psql` | psql shell inside the container |
 | `npm run redis:cli` | redis-cli inside the container |
 | `npm run start:api` | API with watch mode (for coding) |
+| `npm run start:worker` | background jobs only (outbox relay, queue consumer, sweepers); no HTTP |
 | `npm run build && npm run start:prod` | compiled API (use this for load tests) |
 | `npm run test:e2e` | e2e tests against real Postgres + Redis |
 | `npm run load -- /load/<file>.js` | k6 load test (runs in Docker, no install needed) |
@@ -85,6 +89,15 @@ local Postgres/Redis containers.
 | `POST` | `/admin/holds/sweep` | release expired holds now (also runs every 5 s in every pod) · `GET /admin/holds/stats` |
 | `GET` | `/flash-sale.html` | lab page: 200 buyers vs 10 units, three ways |
 | `POST` | `/admin/lab/flash-sale` | the lab run (also `/arm` and `/finish`, used by k6) |
+| `POST` | `/orders` | checkout (header `Idempotency-Key`); `GET /orders/:id`, `GET /orders?customer=` |
+| `POST` | `/orders/:id/payments` | open (or reuse) a payment attempt · `POST /orders/:id/cancel` |
+| `POST` | `/mock-gateway/payments/:ref/complete` | the pretend UPI app: approve / decline, with webhook chaos |
+| `POST` | `/webhooks/payment` | gateway webhook (signed, deduped) · `/naive` for comparison |
+| `GET` | `/admin/rx-queue` | pharmacist queue · `POST /admin/orders/:id/rx {approve, note}` |
+| `POST` | `/admin/orders/sweep` | reconcile + payment timeouts now (also every 5 s in workers) |
+| `GET` | `/admin/outbox/stats` | outbox backlog + queue counts · `POST /admin/outbox/relay` |
+| `POST` | `/admin/lab/payments` | payments chaos lab run `{scenario, handler}` |
+| `GET` | `/order.html`, `/pharmacist.html`, `/payments-lab.html` | order tracking, Rx review, payments chaos lab |
 
 ## Layout
 
@@ -93,7 +106,7 @@ src/config/credentials.ts   the only file that reads env vars
 src/logging/                TraceCodes + JSON logger
 src/redis/                  shared ioredis client
 src/db/                     data source + SQL migrations
-src/<feature>/              one folder per feature (stores, serviceability, catalog, inventory, home, cart, …)
+src/<feature>/              one folder per feature (stores, serviceability, catalog, inventory, home, cart, orders, payments, outbox, …)
 db/seed/seed.ts             Bangalore: 8 stores, 146 SKUs, 61 riders
 public/                     demo pages (Leaflet maps)
 load/                       k6 scripts, one per chapter
