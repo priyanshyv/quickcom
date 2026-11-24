@@ -131,5 +131,6 @@ export class LabController {
   imports: [InventoryModule, CatalogModule],
   controllers: [CartController, HoldsAdminController, LabController],
   providers: [ReservationService, LabService],
+  exports: [ReservationService, LabService],
 })
 export class CartModule {}
