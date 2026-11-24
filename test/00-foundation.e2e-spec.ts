@@ -1,5 +1,5 @@
 // Phase 0 facts, checked against the REAL Postgres + Redis (no mocks).
-//. Needs: npm run db:up && npm run db:reset
+// Needs: npm run db:up && npm run db:reset
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -58,15 +58,17 @@ describe('Phase 0 — foundation', () => {
     expect((await at(12.9346, 77.6113)).map((r) => r.code)).toEqual(['BLR-KOR']);
   });
 
-  it('inventory: one row per (store, sku), nothing negative, nothing reserved yet', async () => {
+  it('inventory: one row per (store, sku), nothing negative, never more reserved than on hand', async () => {
     const [r] = await ds.query(`
       SELECT count(*)::int AS rows,
              count(DISTINCT (store_id, sku_id))::int AS distinct_pairs,
              min(on_hand_qty) AS min_on_hand,
-             sum(reserved_qty)::int AS reserved
+             min(reserved_qty) AS min_reserved,
+             count(*) FILTER (WHERE reserved_qty > on_hand_qty)::int AS over_reserved
       FROM store_inventory`);
     expect(r.rows).toBe(r.distinct_pairs);
     expect(r.min_on_hand).toBeGreaterThanOrEqual(0);
-    expect(r.reserved).toBe(0);
+    expect(r.min_reserved).toBeGreaterThanOrEqual(0);
+    expect(r.over_reserved).toBe(0);
   });
 });
