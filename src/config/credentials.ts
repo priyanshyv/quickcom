@@ -7,8 +7,10 @@ export const credentials = {
   env: process.env.NODE_ENV ?? 'local',
 
   // Same image, different job — like separate api / worker / cron pods in production.
-  // Phase 0 only has "api"; workers arrive in later phases.
-  role: (process.env.ROLE ?? 'api') as 'api' | 'worker',
+  //   api     serves HTTP only
+  //   worker  runs background jobs only (outbox relay, queue consumers, order sweeper)
+  //   all     both, in one process: handy on a laptop (the default here)
+  role: (process.env.ROLE ?? 'all') as 'api' | 'worker' | 'all',
 
   port: num(process.env.PORT, 4000),
 
@@ -35,6 +37,33 @@ export const credentials = {
     // How often each pod looks for expired holds. 0 = off (the e2e tests
     // turn it off so they can run the sweeper by hand).
     sweepIntervalMs: num(process.env.CART_SWEEP_MS, 5000),
+  },
+
+  // Chapter 4: checkout + payments.
+  orders: {
+    // Pay within this long after placing the order, or it is cancelled and its stock released.
+    paymentSeconds: num(process.env.ORDER_PAYMENT_SECONDS, 600),
+    // Free delivery above this cart value; otherwise a flat fee.
+    freeDeliveryAbovePaise: 19900,
+    deliveryFeePaise: 2500,
+    // How often each worker checks for unpaid orders / payments whose webhook never came. 0 = off.
+    sweepIntervalMs: num(process.env.ORDER_SWEEP_MS, 5000),
+    // A payment with no webhook after this long gets checked with the gateway directly.
+    reconcileAfterSeconds: num(process.env.PAYMENT_RECONCILE_AFTER_SECONDS, 30),
+  },
+
+  payments: {
+    // Shared secret between us and the (mock) gateway, used to sign webhooks.
+    webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET ?? 'dev-only-webhook-secret',
+    // Where the mock gateway sends webhooks (this same app, on its own port).
+    webhookBaseUrl: process.env.PAYMENT_WEBHOOK_BASE_URL ?? `http://127.0.0.1:${num(process.env.PORT, 4000)}`,
+  },
+
+  outbox: {
+    // How often each worker moves new outbox rows into the queue. 0 = off.
+    relayIntervalMs: num(process.env.OUTBOX_RELAY_MS, 500),
+    // Order events are split into this many queues by order id (see outbox.service.ts).
+    partitions: num(process.env.ORDER_EVENT_PARTITIONS, 16),
   },
 
   city: {
